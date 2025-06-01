@@ -1,6 +1,7 @@
 from flask import Flask, render_template, jsonify
 import os
 from pathlib import Path
+import glob
 
 app = Flask(__name__)
 
@@ -30,9 +31,30 @@ def index():
     """Render the main page"""
     return render_template('index.html')
 
+@app.route('/api/txt-files')
+def list_txt_files():
+    """Return list of txt files in current directory"""
+    txt_files = glob.glob('*.txt')
+    return jsonify({'files': txt_files})
+
+@app.route('/api/graph/<filename>')
+def get_graph(filename):
+    """Return the graph definition from a txt file"""
+    file_path = BASE_DIR / f"{filename}.txt" if not filename.endswith('.txt') else BASE_DIR / filename
+    
+    if not file_path.exists():
+        return jsonify({'error': 'File not found'}), 404
+    
+    try:
+        with open(file_path, 'r') as f:
+            content = f.read()
+        return jsonify({'content': content, 'filename': filename})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/graph')
-def get_graph():
-    """Return the graph definition"""
+def get_default_graph():
+    """Return the default sample graph"""
     return jsonify({'content': SAMPLE_GRAPH})
 
 @app.route('/api/file/<file_key>')

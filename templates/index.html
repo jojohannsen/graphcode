@@ -42,6 +42,49 @@
             font-family: 'Consolas', 'Monaco', monospace;
             font-size: 14px;
             line-height: 1.6;
+            position: relative;
+        }
+        
+        .file-list {
+            display: block;
+        }
+        
+        .graph-display {
+            display: none;
+        }
+        
+        .file-item {
+            padding: 8px 12px;
+            margin: 4px 0;
+            background-color: #252525;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            color: #b0b0b0;
+        }
+        
+        .file-item:hover {
+            background-color: #353535;
+            color: #ffffff;
+        }
+        
+        .close-button {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            background: none;
+            border: none;
+            color: #666;
+            font-size: 18px;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 3px;
+            transition: all 0.2s;
+        }
+        
+        .close-button:hover {
+            background-color: #2a2a2a;
+            color: #ccc;
         }
         
         .graph-line {
@@ -218,9 +261,15 @@
 </head>
 <body>
     <div class="container">
-        <!-- First column: Graph Display -->
+        <!-- First column: Graph/File List -->
         <div class="column graph-column" id="graphColumn">
-            <div class="loading">Loading graph...</div>
+            <div class="file-list" id="fileList">
+                <div class="loading">Loading files...</div>
+            </div>
+            <div class="graph-display" id="graphDisplay">
+                <button class="close-button" id="closeGraph" title="Close and return to file list">✕</button>
+                <div id="graphContent"></div>
+            </div>
         </div>
         
         <!-- Second column: Navigation -->
@@ -256,8 +305,8 @@
         // Parse and display graph with color coding
         function parseGraph(graphContent) {
             const lines = graphContent.split('\n');
-            const graphColumn = document.getElementById('graphColumn');
-            graphColumn.innerHTML = '';
+            const graphContent_div = document.getElementById('graphContent');
+            graphContent_div.innerHTML = '';
             
             lines.forEach(line => {
                 const lineDiv = document.createElement('div');
@@ -285,21 +334,68 @@
                 }
                 
                 if (line.trim()) {
-                    graphColumn.appendChild(lineDiv);
+                    graphContent_div.appendChild(lineDiv);
                 }
             });
         }
         
-        // Load graph on page load
-        async function loadGraph() {
+        // Load and display txt files
+        async function loadTxtFiles() {
             try {
-                const response = await fetch('/api/graph');
+                const response = await fetch('/api/txt-files');
                 const data = await response.json();
+                const fileList = document.getElementById('fileList');
+                
+                if (data.files.length === 0) {
+                    fileList.innerHTML = '<div style="color: #666; text-align: center; padding: 20px;">No .txt files found in the current directory</div>';
+                    return;
+                }
+                
+                fileList.innerHTML = '';
+                data.files.forEach(filename => {
+                    const fileItem = document.createElement('div');
+                    fileItem.className = 'file-item';
+                    fileItem.textContent = filename;
+                    fileItem.addEventListener('click', () => loadGraphFromFile(filename));
+                    fileList.appendChild(fileItem);
+                });
+            } catch (error) {
+                console.error('Error loading txt files:', error);
+                document.getElementById('fileList').innerHTML = '<div style="color: #ff6b6b; text-align: center; padding: 20px;">Error loading files</div>';
+            }
+        }
+        
+        // Load graph from specific file
+        async function loadGraphFromFile(filename) {
+            try {
+                const response = await fetch(`/api/graph/${filename}`);
+                const data = await response.json();
+                
+                if (data.error) {
+                    alert(`Error loading file: ${data.error}`);
+                    return;
+                }
+                
+                // Switch to graph display
+                document.getElementById('fileList').style.display = 'none';
+                document.getElementById('graphDisplay').style.display = 'block';
+                
                 parseGraph(data.content);
             } catch (error) {
                 console.error('Error loading graph:', error);
-                document.getElementById('graphColumn').innerHTML = '<div class="loading">Error loading graph</div>';
+                alert('Error loading graph file');
             }
+        }
+        
+        // Show file list and hide graph
+        function showFileList() {
+            document.getElementById('fileList').style.display = 'block';
+            document.getElementById('graphDisplay').style.display = 'none';
+        }
+        
+        // Initialize close button
+        function initializeCloseButton() {
+            document.getElementById('closeGraph').addEventListener('click', showFileList);
         }
         
         // Handle navigation clicks
@@ -341,8 +437,9 @@
             });
         });
         
-        // Load graph on page load
-        loadGraph();
+        // Initialize the application
+        loadTxtFiles();
+        initializeCloseButton();
         
         // Load first file by default
         document.querySelector('.nav-link').click();

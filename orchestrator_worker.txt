@@ -1,0 +1,9 @@
+# invoke with a report topic
+State -> orchestrator
+# generate a list of report sections based on that topic
+# generate no more than 4 sections, we store them in a list in state
+orchestrator -> worker(State.sections)
+# generate content for a section
+worker -> synthesizer
+# generate synthesized response based on the results of all the workers
+synthesizer -> END
