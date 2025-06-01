@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Graph Visualization System</title>
+    
+    <!-- Prism CSS for syntax highlighting -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #0a0a0a;
+            color: #e0e0e0;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        .container {
+            display: grid;
+            grid-template-columns: 2fr 1fr 3fr;
+            height: 100vh;
+            gap: 1px;
+            background-color: #2a2a2a;
+        }
+        
+        .column {
+            background-color: #1a1a1a;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        
+        /* First column - Graph display */
+        .graph-column {
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .graph-line {
+            margin: 2px 0;
+            padding: 4px 8px;
+            border-radius: 3px;
+            transition: background-color 0.2s;
+        }
+        
+        .graph-line:hover {
+            background-color: #2a2a2a;
+        }
+        
+        .graph-comment {
+            color: #6a9955;
+            font-style: italic;
+        }
+        
+        .graph-state {
+            color: #569cd6;
+            font-weight: bold;
+        }
+        
+        .graph-node {
+            color: #9cdcfe;
+        }
+        
+        .graph-arrow {
+            color: #d4d4d4;
+        }
+        
+        .graph-end {
+            color: #ce9178;
+            font-weight: bold;
+        }
+        
+        /* Second column - Navigation */
+        .nav-column {
+            border-left: 1px solid #2a2a2a;
+            border-right: 1px solid #2a2a2a;
+        }
+        
+        .nav-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: #ffffff;
+        }
+        
+        .nav-link {
+            display: block;
+            padding: 12px 16px;
+            margin: 4px 0;
+            text-decoration: none;
+            color: #b0b0b0;
+            background-color: #252525;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+            font-size: 14px;
+        }
+        
+        .nav-link:hover {
+            background-color: #353535;
+            color: #ffffff;
+            transform: translateX(4px);
+        }
+        
+        .nav-link.active {
+            background-color: #2a4e7d;
+            color: #ffffff;
+        }
+        
+        /* Third column - Content display */
+        .content-column {
+            position: relative;
+        }
+        
+        .content-header {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #3a3a3a;
+            color: #ffffff;
+        }
+        
+        .content-body {
+            font-size: 14px;
+            line-height: 1.8;
+        }
+        
+        /* Markdown styling */
+        .markdown-content h1, .markdown-content h2, .markdown-content h3 {
+            margin: 20px 0 10px 0;
+            color: #ffffff;
+        }
+        
+        .markdown-content h1 {
+            font-size: 28px;
+            border-bottom: 2px solid #3a3a3a;
+            padding-bottom: 8px;
+        }
+        
+        .markdown-content h2 {
+            font-size: 22px;
+        }
+        
+        .markdown-content p {
+            margin: 12px 0;
+        }
+        
+        .markdown-content code {
+            background-color: #2a2a2a;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 13px;
+        }
+        
+        .markdown-content pre {
+            background-color: #2a2a2a;
+            padding: 16px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 16px 0;
+        }
+        
+        .markdown-content ul, .markdown-content ol {
+            margin: 12px 0;
+            padding-left: 24px;
+        }
+        
+        .markdown-content li {
+            margin: 6px 0;
+        }
+        
+        /* Code block styling */
+        pre[class*="language-"] {
+            background-color: #2a2a2a;
+            border-radius: 6px;
+            padding: 16px;
+            margin: 0;
+        }
+        
+        /* Loading indicator */
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            font-size: 16px;
+            color: #666;
+        }
+        
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: #1a1a1a;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #3a3a3a;
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #4a4a4a;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- First column: Graph Display -->
+        <div class="column graph-column" id="graphColumn">
+            <div class="loading">Loading graph...</div>
+        </div>
+        
+        <!-- Second column: Navigation -->
+        <div class="column nav-column">
+            <h2 class="nav-title">Navigation</h2>
+            <nav>
+                <a href="#" class="nav-link" data-file="state_spec">state spec</a>
+                <a href="#" class="nav-link" data-file="state_code">state code</a>
+                <a href="#" class="nav-link" data-file="node_spec">node spec</a>
+                <a href="#" class="nav-link" data-file="node_code">node code</a>
+                <a href="#" class="nav-link" data-file="graph_definition">graph definition</a>
+                <a href="#" class="nav-link" data-file="main">main</a>
+            </nav>
+        </div>
+        
+        <!-- Third column: Content Display -->
+        <div class="column content-column">
+            <h2 class="content-header" id="contentHeader">Welcome</h2>
+            <div class="content-body" id="contentBody">
+                <p>Select a file from the navigation menu to view its contents.</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Prism JS for syntax highlighting -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+    
+    <!-- Marked JS for markdown rendering -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.3.0/marked.min.js"></script>
+    
+    <script>
+        // Parse and display graph with color coding
+        function parseGraph(graphContent) {
+            const lines = graphContent.split('\n');
+            const graphColumn = document.getElementById('graphColumn');
+            graphColumn.innerHTML = '';
+            
+            lines.forEach(line => {
+                const lineDiv = document.createElement('div');
+                lineDiv.className = 'graph-line';
+                
+                if (line.trim().startsWith('#')) {
+                    // Comment
+                    lineDiv.innerHTML = `<span class="graph-comment">${line}</span>`;
+                } else if (line.includes('->')) {
+                    // Connection
+                    const parts = line.split('->');
+                    const source = parts[0].trim();
+                    const target = parts[1].trim();
+                    
+                    let sourceClass = 'graph-node';
+                    let targetClass = 'graph-node';
+                    
+                    if (source === 'State') sourceClass = 'graph-state';
+                    if (target === 'END') targetClass = 'graph-end';
+                    
+                    lineDiv.innerHTML = `<span class="${sourceClass}">${source}</span> <span class="graph-arrow">-></span> <span class="${targetClass}">${target}</span>`;
+                } else if (line.trim()) {
+                    // Other content
+                    lineDiv.textContent = line;
+                }
+                
+                if (line.trim()) {
+                    graphColumn.appendChild(lineDiv);
+                }
+            });
+        }
+        
+        // Load graph on page load
+        async function loadGraph() {
+            try {
+                const response = await fetch('/api/graph');
+                const data = await response.json();
+                parseGraph(data.content);
+            } catch (error) {
+                console.error('Error loading graph:', error);
+                document.getElementById('graphColumn').innerHTML = '<div class="loading">Error loading graph</div>';
+            }
+        }
+        
+        // Handle navigation clicks
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.addEventListener('click', async (e) => {
+                e.preventDefault();
+                
+                // Update active state
+                document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+                link.classList.add('active');
+                
+                const fileKey = link.dataset.file;
+                const fileName = link.textContent;
+                
+                // Update header
+                document.getElementById('contentHeader').textContent = fileName;
+                
+                // Show loading
+                document.getElementById('contentBody').innerHTML = '<div class="loading">Loading...</div>';
+                
+                try {
+                    const response = await fetch(`/api/file/${fileKey}`);
+                    const data = await response.json();
+                    
+                    const contentBody = document.getElementById('contentBody');
+                    
+                    if (fileKey.includes('spec')) {
+                        // Render markdown
+                        contentBody.innerHTML = `<div class="markdown-content">${marked.parse(data.content)}</div>`;
+                    } else {
+                        // Render Python code with syntax highlighting
+                        contentBody.innerHTML = `<pre><code class="language-python">${data.content}</code></pre>`;
+                        Prism.highlightAll();
+                    }
+                } catch (error) {
+                    console.error('Error loading file:', error);
+                    document.getElementById('contentBody').innerHTML = '<div class="loading">Error loading file</div>';
+                }
+            });
+        });
+        
+        // Load graph on page load
+        loadGraph();
+        
+        // Load first file by default
+        document.querySelector('.nav-link').click();
+    </script>
+</body>
+</html>
