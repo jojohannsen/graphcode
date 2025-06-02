@@ -399,6 +399,77 @@
         // Track current loaded file
         let currentLoadedFile = null;
         
+        // Check which files exist for a given graph name
+        async function checkExistingFiles(graphName) {
+            const fileChecks = {
+                state_spec: `${graphName}/state-spec.md`,
+                state_code: `${graphName}/state_code.py`, 
+                node_spec: `${graphName}/node-spec.md`,
+                node_code: `${graphName}/node_code.py`,
+                graph_definition: `${graphName}/graph.py`,
+                main: `${graphName}/main.py`
+            };
+            
+            const existingFiles = {};
+            
+            for (const [key, filePath] of Object.entries(fileChecks)) {
+                try {
+                    const response = await fetch(`/api/check-file/${filePath}`);
+                    existingFiles[key] = response.ok;
+                } catch (error) {
+                    existingFiles[key] = false;
+                }
+            }
+            
+            return existingFiles;
+        }
+        
+        // Update button states based on file dependencies
+        function updateButtonStates(existingFiles) {
+            const buttons = {
+                state_spec: document.querySelector('[data-file="state_spec"]'),
+                state_code: document.querySelector('[data-file="state_code"]'),
+                node_spec: document.querySelector('[data-file="node_spec"]'),
+                node_code: document.querySelector('[data-file="node_code"]'),
+                graph_definition: document.querySelector('[data-file="graph_definition"]'),
+                main: document.querySelector('[data-file="main"]')
+            };
+            
+            // Reset all buttons to disabled
+            Object.values(buttons).forEach(button => {
+                button.classList.add('disabled');
+                button.classList.remove('active');
+            });
+            
+            // State spec is always enabled when a file is loaded
+            buttons.state_spec.classList.remove('disabled');
+            
+            // State code enabled if state spec exists
+            if (existingFiles.state_spec) {
+                buttons.state_code.classList.remove('disabled');
+            }
+            
+            // Node spec enabled if state code button is enabled and state_code.py exists
+            if (!buttons.state_code.classList.contains('disabled') && existingFiles.state_code) {
+                buttons.node_spec.classList.remove('disabled');
+            }
+            
+            // Node code enabled if node spec button is enabled and node-spec.md exists
+            if (!buttons.node_spec.classList.contains('disabled') && existingFiles.node_spec) {
+                buttons.node_code.classList.remove('disabled');
+            }
+            
+            // Graph definition enabled if node code button is enabled and node_code.py exists
+            if (!buttons.node_code.classList.contains('disabled') && existingFiles.node_code) {
+                buttons.graph_definition.classList.remove('disabled');
+            }
+            
+            // Main enabled if graph definition button is enabled and graph.py exists
+            if (!buttons.graph_definition.classList.contains('disabled') && existingFiles.graph_definition) {
+                buttons.main.classList.remove('disabled');
+            }
+        }
+        
         // Load graph from specific file
         async function loadGraphFromFile(filename) {
             try {
@@ -422,12 +493,9 @@
                 document.getElementById('selectedFileName').textContent = fileNameWithoutExt;
                 document.getElementById('graphHeader').style.display = 'flex';
                 
-                // Enable only the state spec button
-                document.querySelectorAll('.nav-link').forEach(link => {
-                    link.classList.add('disabled');
-                });
-                const stateSpecLink = document.querySelector('[data-file="state_spec"]');
-                stateSpecLink.classList.remove('disabled');
+                // Check existing files and update button states
+                const existingFiles = await checkExistingFiles(fileNameWithoutExt);
+                updateButtonStates(existingFiles);
                 
                 parseGraph(data.content);
             } catch (error) {
@@ -490,9 +558,10 @@
                 // Display the generated markdown
                 contentBody.innerHTML = `<div class="markdown-content">${marked.parse(data.content)}</div>`;
                 
-                // Enable the state code button
-                const stateCodeLink = document.querySelector('[data-file="state_code"]');
-                stateCodeLink.classList.remove('disabled');
+                // Refresh button states after successful generation
+                const fileNameWithoutExt = currentLoadedFile.replace('.txt', '');
+                const existingFiles = await checkExistingFiles(fileNameWithoutExt);
+                updateButtonStates(existingFiles);
                 
             } catch (error) {
                 console.error('Error generating state spec:', error);
@@ -530,9 +599,10 @@
                 contentBody.innerHTML = `<pre><code class="language-python">${data.content}</code></pre>`;
                 Prism.highlightAll();
                 
-                // Enable the node spec button
-                const nodeSpecLink = document.querySelector('[data-file="node_spec"]');
-                nodeSpecLink.classList.remove('disabled');
+                // Refresh button states after successful generation
+                const fileNameWithoutExt = currentLoadedFile.replace('.txt', '');
+                const existingFiles = await checkExistingFiles(fileNameWithoutExt);
+                updateButtonStates(existingFiles);
                 
             } catch (error) {
                 console.error('Error generating state code:', error);
@@ -569,13 +639,55 @@
                 // Display the generated markdown
                 contentBody.innerHTML = `<div class="markdown-content">${marked.parse(data.content)}</div>`;
                 
-                // Enable the node code button
-                const nodeCodeLink = document.querySelector('[data-file="node_code"]');
-                nodeCodeLink.classList.remove('disabled');
+                // Refresh button states after successful generation
+                const fileNameWithoutExt = currentLoadedFile.replace('.txt', '');
+                const existingFiles = await checkExistingFiles(fileNameWithoutExt);
+                updateButtonStates(existingFiles);
                 
             } catch (error) {
                 console.error('Error generating node spec:', error);
                 contentBody.innerHTML = '<div class="loading">Error generating node specification</div>';
+            }
+        }
+        
+        // Generate node code
+        async function generateNodeCode() {
+            if (!currentLoadedFile) {
+                alert('No file loaded');
+                return;
+            }
+            
+            const contentBody = document.getElementById('contentBody');
+            contentBody.innerHTML = '<div class="loading">Generating node code...</div>';
+            
+            try {
+                const response = await fetch('/api/generate/node-code', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ filename: currentLoadedFile })
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    contentBody.innerHTML = `<div class="loading">Error: ${data.error}</div>`;
+                    return;
+                }
+                
+                // Display the generated Python code with syntax highlighting
+                contentBody.innerHTML = `<pre><code class="language-python">${data.content}</code></pre>`;
+                Prism.highlightAll();
+                
+                // Refresh button states after successful generation
+                const fileNameWithoutExt = currentLoadedFile.replace('.txt', '');
+                const existingFiles = await checkExistingFiles(fileNameWithoutExt);
+                updateButtonStates(existingFiles);
+                
+            } catch (error) {
+                console.error('Error generating node code:', error);
+                contentBody.innerHTML = '<div class="loading">Error generating node code</div>';
             }
         }
         
@@ -614,6 +726,12 @@
                 // Special handling for node spec
                 if (fileKey === 'node_spec' && currentLoadedFile) {
                     await generateNodeSpec();
+                    return;
+                }
+                
+                // Special handling for node code
+                if (fileKey === 'node_code' && currentLoadedFile) {
+                    await generateNodeCode();
                     return;
                 }
                 
