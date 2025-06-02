@@ -525,6 +525,21 @@ def get_existing_file(file_path):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/delete-file/<path:file_path>', methods=['DELETE'])
+def delete_file(file_path):
+    """Delete a file"""
+    full_path = BASE_DIR / file_path
+    if not full_path.exists() or not full_path.is_file():
+        return jsonify({'error': 'File not found'}), 404
+    
+    try:
+        full_path.unlink()
+        print(f"Deleted file: {full_path}", flush=True)
+        return jsonify({'success': True, 'message': 'File deleted successfully'}), 200
+    except Exception as e:
+        print(f"Error deleting file {full_path}: {e}", flush=True)
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     # Disable auto-reload to prevent interruption when files are generated
     app.run(debug=True, use_reloader=False)

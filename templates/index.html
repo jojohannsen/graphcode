@@ -218,6 +218,32 @@
             padding: 20px;
             flex-grow: 1;
             overflow-y: auto;
+            position: relative;
+        }
+        
+        .delete-button {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: none;
+            border: none;
+            color: #666;
+            font-size: 16px;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 3px;
+            transition: all 0.2s;
+            z-index: 10;
+            display: none;
+        }
+        
+        .delete-button:hover {
+            background-color: #2a2a2a;
+            color: #ff6b6b;
+        }
+        
+        .delete-button.visible {
+            display: block;
         }
         
         .content-body {
@@ -342,6 +368,7 @@
         <div class="column content-column">
             <div class="content-header welcome-style" id="contentHeader">Welcome</div>
             <div class="content-body-wrapper">
+                <button class="delete-button" id="deleteButton" title="Delete this file">🗑️</button>
                 <div class="content-body" id="contentBody">
                     <p>Select a file from the navigation menu to view its contents.</p>
                 </div>
@@ -420,8 +447,9 @@
             }
         }
         
-        // Track current loaded file
+        // Track current loaded file and displayed artifact
         let currentLoadedFile = null;
+        let currentDisplayedArtifact = null;
         
         // Check which files exist for a given graph name
         async function checkExistingFiles(graphName) {
@@ -548,6 +576,7 @@
             contentHeader.textContent = 'Welcome';
             contentHeader.className = 'content-header welcome-style';
             document.getElementById('contentBody').innerHTML = '<p>Select a file from the navigation menu to view its contents.</p>';
+            hideDeleteButton();
         }
         
         // Initialize close button
@@ -584,14 +613,19 @@
                 // Display the generated markdown
                 contentBody.innerHTML = `<div class="markdown-content">${marked.parse(data.content)}</div>`;
                 
-                // Refresh button states after successful generation
+                // Show delete button and track current artifact
                 const fileNameWithoutExt = currentLoadedFile.replace('.txt', '');
+                currentDisplayedArtifact = `${fileNameWithoutExt}/state-spec.md`;
+                showDeleteButton();
+                
+                // Refresh button states after successful generation
                 const existingFiles = await checkExistingFiles(fileNameWithoutExt);
                 updateButtonStates(existingFiles);
                 
             } catch (error) {
                 console.error('Error generating state spec:', error);
                 contentBody.innerHTML = '<div class="loading">Error generating state specification</div>';
+                hideDeleteButton();
             }
         }
         
@@ -625,14 +659,19 @@
                 contentBody.innerHTML = `<pre><code class="language-python">${data.content}</code></pre>`;
                 Prism.highlightAll();
                 
-                // Refresh button states after successful generation
+                // Show delete button and track current artifact
                 const fileNameWithoutExt = currentLoadedFile.replace('.txt', '');
+                currentDisplayedArtifact = `${fileNameWithoutExt}/state_code.py`;
+                showDeleteButton();
+                
+                // Refresh button states after successful generation
                 const existingFiles = await checkExistingFiles(fileNameWithoutExt);
                 updateButtonStates(existingFiles);
                 
             } catch (error) {
                 console.error('Error generating state code:', error);
                 contentBody.innerHTML = '<div class="loading">Error generating state code</div>';
+                hideDeleteButton();
             }
         }
         
@@ -665,14 +704,19 @@
                 // Display the generated markdown
                 contentBody.innerHTML = `<div class="markdown-content">${marked.parse(data.content)}</div>`;
                 
-                // Refresh button states after successful generation
+                // Show delete button and track current artifact
                 const fileNameWithoutExt = currentLoadedFile.replace('.txt', '');
+                currentDisplayedArtifact = `${fileNameWithoutExt}/node-spec.md`;
+                showDeleteButton();
+                
+                // Refresh button states after successful generation
                 const existingFiles = await checkExistingFiles(fileNameWithoutExt);
                 updateButtonStates(existingFiles);
                 
             } catch (error) {
                 console.error('Error generating node spec:', error);
                 contentBody.innerHTML = '<div class="loading">Error generating node specification</div>';
+                hideDeleteButton();
             }
         }
         
@@ -706,14 +750,19 @@
                 contentBody.innerHTML = `<pre><code class="language-python">${data.content}</code></pre>`;
                 Prism.highlightAll();
                 
-                // Refresh button states after successful generation
+                // Show delete button and track current artifact
                 const fileNameWithoutExt = currentLoadedFile.replace('.txt', '');
+                currentDisplayedArtifact = `${fileNameWithoutExt}/node_code.py`;
+                showDeleteButton();
+                
+                // Refresh button states after successful generation
                 const existingFiles = await checkExistingFiles(fileNameWithoutExt);
                 updateButtonStates(existingFiles);
                 
             } catch (error) {
                 console.error('Error generating node code:', error);
                 contentBody.innerHTML = '<div class="loading">Error generating node code</div>';
+                hideDeleteButton();
             }
         }
         
@@ -747,14 +796,19 @@
                 contentBody.innerHTML = `<pre><code class="language-python">${data.content}</code></pre>`;
                 Prism.highlightAll();
                 
-                // Refresh button states after successful generation
+                // Show delete button and track current artifact
                 const fileNameWithoutExt = currentLoadedFile.replace('.txt', '');
+                currentDisplayedArtifact = `${fileNameWithoutExt}/graph_code.py`;
+                showDeleteButton();
+                
+                // Refresh button states after successful generation
                 const existingFiles = await checkExistingFiles(fileNameWithoutExt);
                 updateButtonStates(existingFiles);
                 
             } catch (error) {
                 console.error('Error generating graph code:', error);
                 contentBody.innerHTML = '<div class="loading">Error generating graph code</div>';
+                hideDeleteButton();
             }
         }
         
@@ -788,14 +842,19 @@
                 contentBody.innerHTML = `<pre><code class="language-python">${data.content}</code></pre>`;
                 Prism.highlightAll();
                 
-                // Refresh button states after successful generation (though main is the last step)
+                // Show delete button and track current artifact
                 const fileNameWithoutExt = currentLoadedFile.replace('.txt', '');
+                currentDisplayedArtifact = `${fileNameWithoutExt}/main.py`;
+                showDeleteButton();
+                
+                // Refresh button states after successful generation (though main is the last step)
                 const existingFiles = await checkExistingFiles(fileNameWithoutExt);
                 updateButtonStates(existingFiles);
                 
             } catch (error) {
                 console.error('Error generating main code:', error);
                 contentBody.innerHTML = '<div class="loading">Error generating main code</div>';
+                hideDeleteButton();
             }
         }
         
@@ -810,6 +869,7 @@
                 
                 if (data.error) {
                     contentBody.innerHTML = `<div class="loading">Error: ${data.error}</div>`;
+                    hideDeleteButton();
                     return false;
                 }
                 
@@ -822,11 +882,74 @@
                     Prism.highlightAll();
                 }
                 
+                // Show delete button and track current artifact
+                currentDisplayedArtifact = filePath;
+                showDeleteButton();
+                
                 return true;
             } catch (error) {
                 console.error('Error loading existing file:', error);
                 contentBody.innerHTML = '<div class="loading">Error loading existing file</div>';
+                hideDeleteButton();
                 return false;
+            }
+        }
+        
+        // Show delete button
+        function showDeleteButton() {
+            document.getElementById('deleteButton').classList.add('visible');
+        }
+        
+        // Hide delete button
+        function hideDeleteButton() {
+            document.getElementById('deleteButton').classList.remove('visible');
+            currentDisplayedArtifact = null;
+        }
+        
+        // Delete current artifact
+        async function deleteCurrentArtifact() {
+            if (!currentDisplayedArtifact) {
+                return;
+            }
+            
+            const fileName = currentDisplayedArtifact.split('/').pop();
+            const confirmed = confirm(`Delete '${fileName}'?`);
+            
+            if (!confirmed) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/delete-file/${currentDisplayedArtifact}`, {
+                    method: 'DELETE'
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    alert(`Error deleting file: ${data.error}`);
+                    return;
+                }
+                
+                // Update UI after successful deletion
+                const contentBody = document.getElementById('contentBody');
+                contentBody.innerHTML = `<div style="text-align: center; padding: 40px; color: #888;">
+                    <p>File '${fileName}' has been deleted.</p>
+                    <p>Click the corresponding button to regenerate it.</p>
+                </div>`;
+                
+                hideDeleteButton();
+                
+                // Refresh button states
+                if (currentLoadedFile) {
+                    const fileNameWithoutExt = currentLoadedFile.replace('.txt', '');
+                    const existingFiles = await checkExistingFiles(fileNameWithoutExt);
+                    updateButtonStates(existingFiles);
+                }
+                
+            } catch (error) {
+                console.error('Error deleting file:', error);
+                alert('Error deleting file');
             }
         }
         
@@ -908,6 +1031,9 @@
         // Initialize the application
         loadTxtFiles();
         initializeCloseButton();
+        
+        // Initialize delete button
+        document.getElementById('deleteButton').addEventListener('click', deleteCurrentArtifact);
     </script>
 </body>
 </html>
