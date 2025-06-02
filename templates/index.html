@@ -500,6 +500,85 @@
             }
         }
         
+        // Generate state code
+        async function generateStateCode() {
+            if (!currentLoadedFile) {
+                alert('No file loaded');
+                return;
+            }
+            
+            const contentBody = document.getElementById('contentBody');
+            contentBody.innerHTML = '<div class="loading">Generating state code...</div>';
+            
+            try {
+                const response = await fetch('/api/generate/state-code', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ filename: currentLoadedFile })
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    contentBody.innerHTML = `<div class="loading">Error: ${data.error}</div>`;
+                    return;
+                }
+                
+                // Display the generated Python code with syntax highlighting
+                contentBody.innerHTML = `<pre><code class="language-python">${data.content}</code></pre>`;
+                Prism.highlightAll();
+                
+                // Enable the node spec button
+                const nodeSpecLink = document.querySelector('[data-file="node_spec"]');
+                nodeSpecLink.classList.remove('disabled');
+                
+            } catch (error) {
+                console.error('Error generating state code:', error);
+                contentBody.innerHTML = '<div class="loading">Error generating state code</div>';
+            }
+        }
+        
+        // Generate node spec
+        async function generateNodeSpec() {
+            if (!currentLoadedFile) {
+                alert('No file loaded');
+                return;
+            }
+            
+            const contentBody = document.getElementById('contentBody');
+            contentBody.innerHTML = '<div class="loading">Generating node specification...</div>';
+            
+            try {
+                const response = await fetch('/api/generate/node-spec', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ filename: currentLoadedFile })
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    contentBody.innerHTML = `<div class="loading">Error: ${data.error}</div>`;
+                    return;
+                }
+                
+                // Display the generated markdown
+                contentBody.innerHTML = `<div class="markdown-content">${marked.parse(data.content)}</div>`;
+                
+                // Enable the node code button
+                const nodeCodeLink = document.querySelector('[data-file="node_code"]');
+                nodeCodeLink.classList.remove('disabled');
+                
+            } catch (error) {
+                console.error('Error generating node spec:', error);
+                contentBody.innerHTML = '<div class="loading">Error generating node specification</div>';
+            }
+        }
+        
         // Handle navigation clicks
         document.querySelectorAll('.nav-link').forEach(link => {
             link.addEventListener('click', async (e) => {
@@ -523,6 +602,18 @@
                 // Special handling for state spec
                 if (fileKey === 'state_spec' && currentLoadedFile) {
                     await generateStateSpec();
+                    return;
+                }
+                
+                // Special handling for state code
+                if (fileKey === 'state_code' && currentLoadedFile) {
+                    await generateStateCode();
+                    return;
+                }
+                
+                // Special handling for node spec
+                if (fileKey === 'node_spec' && currentLoadedFile) {
+                    await generateNodeSpec();
                     return;
                 }
                 

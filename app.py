@@ -3,6 +3,8 @@ import os
 from pathlib import Path
 import glob
 from gen_state_spec import generate_state_spec
+from gen_state_code import generate_state_code
+from gen_node_spec import generate_node_spec
 
 app = Flask(__name__)
 
@@ -244,6 +246,104 @@ def generate_state_spec_endpoint():
             import traceback
             error_details = traceback.format_exc()
             print(f"ERROR in generate_state_spec: {error_details}", flush=True)
+            return jsonify({'error': f'Generation failed: {str(e)}'}), 500
+            
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"ERROR in endpoint: {error_details}", flush=True)
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/generate/state-code', methods=['POST'])
+def generate_state_code_endpoint():
+    """Generate state code from graph file and state spec"""
+    print("=== Starting state code generation endpoint ===", flush=True)
+    try:
+        data = request.json
+        filename = data.get('filename')
+        print(f"Received request for filename: {filename}", flush=True)
+        
+        if not filename:
+            print("ERROR: No filename provided", flush=True)
+            return jsonify({'error': 'No filename provided'}), 400
+        
+        # Read the graph file
+        file_path = BASE_DIR / filename
+        print(f"Looking for file at: {file_path}", flush=True)
+        if not file_path.exists():
+            print("ERROR: File not found", flush=True)
+            return jsonify({'error': 'File not found'}), 404
+        
+        with open(file_path, 'r') as f:
+            graph_spec = f.read()
+        print(f"Successfully read graph spec ({len(graph_spec)} characters)", flush=True)
+        
+        # Extract graph name (filename without .txt)
+        graph_name = filename.replace('.txt', '')
+        print(f"Graph name: {graph_name}", flush=True)
+        
+        # Generate state code
+        try:
+            print("Calling generate_state_code function...", flush=True)
+            state_code_content = generate_state_code(graph_name, graph_spec)
+            print(f"Successfully generated state code ({len(state_code_content)} characters)", flush=True)
+            return jsonify({
+                'content': state_code_content,
+                'success': True
+            })
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"ERROR in generate_state_code: {error_details}", flush=True)
+            return jsonify({'error': f'Generation failed: {str(e)}'}), 500
+            
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"ERROR in endpoint: {error_details}", flush=True)
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/generate/node-spec', methods=['POST'])
+def generate_node_spec_endpoint():
+    """Generate node specification from graph file and state spec"""
+    print("=== Starting node spec generation endpoint ===", flush=True)
+    try:
+        data = request.json
+        filename = data.get('filename')
+        print(f"Received request for filename: {filename}", flush=True)
+        
+        if not filename:
+            print("ERROR: No filename provided", flush=True)
+            return jsonify({'error': 'No filename provided'}), 400
+        
+        # Read the graph file
+        file_path = BASE_DIR / filename
+        print(f"Looking for file at: {file_path}", flush=True)
+        if not file_path.exists():
+            print("ERROR: File not found", flush=True)
+            return jsonify({'error': 'File not found'}), 404
+        
+        with open(file_path, 'r') as f:
+            graph_spec = f.read()
+        print(f"Successfully read graph spec ({len(graph_spec)} characters)", flush=True)
+        
+        # Extract graph name (filename without .txt)
+        graph_name = filename.replace('.txt', '')
+        print(f"Graph name: {graph_name}", flush=True)
+        
+        # Generate node spec
+        try:
+            print("Calling generate_node_spec function...", flush=True)
+            node_spec_content = generate_node_spec(graph_name, graph_spec)
+            print(f"Successfully generated node spec ({len(node_spec_content)} characters)", flush=True)
+            return jsonify({
+                'content': node_spec_content,
+                'success': True
+            })
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"ERROR in generate_node_spec: {error_details}", flush=True)
             return jsonify({'error': f'Generation failed: {str(e)}'}), 500
             
     except Exception as e:
