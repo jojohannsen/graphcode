@@ -511,6 +511,20 @@ def check_file_exists(file_path):
     else:
         return jsonify({'exists': False}), 404
 
+@app.route('/api/get-file/<path:file_path>')
+def get_existing_file(file_path):
+    """Get content of an existing file"""
+    full_path = BASE_DIR / file_path
+    if not full_path.exists() or not full_path.is_file():
+        return jsonify({'error': 'File not found'}), 404
+    
+    try:
+        with open(full_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        return jsonify({'content': content}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     # Disable auto-reload to prevent interruption when files are generated
     app.run(debug=True, use_reloader=False)

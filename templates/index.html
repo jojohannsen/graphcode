@@ -187,15 +187,37 @@
         /* Third column - Content display */
         .content-column {
             position: relative;
+            display: flex;
+            flex-direction: column;
         }
         
         .content-header {
+            background-color: #2d3142;
+            color: #e8e9eb;
+            padding: 8px 20px;
+            font-size: 13px;
+            font-weight: 500;
+            border-bottom: 1px solid #3a3d4e;
+            min-height: 36px;
+            display: flex;
+            align-items: center;
+            flex-shrink: 0;
+            margin: 0;
+        }
+        
+        .content-header.welcome-style {
+            background-color: #1a1a1a;
+            color: #ffffff;
             font-size: 20px;
             font-weight: 600;
-            margin-bottom: 20px;
-            padding-bottom: 10px;
+            padding: 20px;
             border-bottom: 1px solid #3a3a3a;
-            color: #ffffff;
+        }
+        
+        .content-body-wrapper {
+            padding: 20px;
+            flex-grow: 1;
+            overflow-y: auto;
         }
         
         .content-body {
@@ -318,9 +340,11 @@
         
         <!-- Third column: Content Display -->
         <div class="column content-column">
-            <h2 class="content-header" id="contentHeader">Welcome</h2>
-            <div class="content-body" id="contentBody">
-                <p>Select a file from the navigation menu to view its contents.</p>
+            <div class="content-header welcome-style" id="contentHeader">Welcome</div>
+            <div class="content-body-wrapper">
+                <div class="content-body" id="contentBody">
+                    <p>Select a file from the navigation menu to view its contents.</p>
+                </div>
             </div>
         </div>
     </div>
@@ -519,8 +543,10 @@
                 link.classList.remove('active');
             });
             
-            // Reset content area
-            document.getElementById('contentHeader').textContent = 'Welcome';
+            // Reset content area with welcome style
+            const contentHeader = document.getElementById('contentHeader');
+            contentHeader.textContent = 'Welcome';
+            contentHeader.className = 'content-header welcome-style';
             document.getElementById('contentBody').innerHTML = '<p>Select a file from the navigation menu to view its contents.</p>';
         }
         
@@ -773,6 +799,37 @@
             }
         }
         
+        // Display existing file content
+        async function displayExistingFile(filePath, isMarkdown = false) {
+            const contentBody = document.getElementById('contentBody');
+            contentBody.innerHTML = '<div class="loading">Loading existing file...</div>';
+            
+            try {
+                const response = await fetch(`/api/get-file/${filePath}`);
+                const data = await response.json();
+                
+                if (data.error) {
+                    contentBody.innerHTML = `<div class="loading">Error: ${data.error}</div>`;
+                    return false;
+                }
+                
+                if (isMarkdown) {
+                    // Display markdown content
+                    contentBody.innerHTML = `<div class="markdown-content">${marked.parse(data.content)}</div>`;
+                } else {
+                    // Display Python code with syntax highlighting
+                    contentBody.innerHTML = `<pre><code class="language-python">${data.content}</code></pre>`;
+                    Prism.highlightAll();
+                }
+                
+                return true;
+            } catch (error) {
+                console.error('Error loading existing file:', error);
+                contentBody.innerHTML = '<div class="loading">Error loading existing file</div>';
+                return false;
+            }
+        }
+        
         // Handle navigation clicks
         document.querySelectorAll('.nav-link').forEach(link => {
             link.addEventListener('click', async (e) => {
@@ -790,43 +847,38 @@
                 const fileKey = link.dataset.file;
                 const fileName = link.textContent;
                 
-                // Update header
-                document.getElementById('contentHeader').textContent = fileName;
+                // Update header with file-loaded style
+                const contentHeader = document.getElementById('contentHeader');
+                contentHeader.textContent = fileName;
+                contentHeader.className = 'content-header';
                 
-                // Special handling for state spec
-                if (fileKey === 'state_spec' && currentLoadedFile) {
-                    await generateStateSpec();
-                    return;
-                }
-                
-                // Special handling for state code
-                if (fileKey === 'state_code' && currentLoadedFile) {
-                    await generateStateCode();
-                    return;
-                }
-                
-                // Special handling for node spec
-                if (fileKey === 'node_spec' && currentLoadedFile) {
-                    await generateNodeSpec();
-                    return;
-                }
-                
-                // Special handling for node code
-                if (fileKey === 'node_code' && currentLoadedFile) {
-                    await generateNodeCode();
-                    return;
-                }
-                
-                // Special handling for graph code
-                if (fileKey === 'graph_code' && currentLoadedFile) {
-                    await generateGraphCode();
-                    return;
-                }
-                
-                // Special handling for main
-                if (fileKey === 'main' && currentLoadedFile) {
-                    await generateMain();
-                    return;
+                // Special handling for files that can be generated
+                if (currentLoadedFile) {
+                    const fileNameWithoutExt = currentLoadedFile.replace('.txt', '');
+                    
+                    // Define file mappings
+                    const fileMapping = {
+                        'state_spec': { path: `${fileNameWithoutExt}/state-spec.md`, isMarkdown: true, generateFunc: generateStateSpec },
+                        'state_code': { path: `${fileNameWithoutExt}/state_code.py`, isMarkdown: false, generateFunc: generateStateCode },
+                        'node_spec': { path: `${fileNameWithoutExt}/node-spec.md`, isMarkdown: true, generateFunc: generateNodeSpec },
+                        'node_code': { path: `${fileNameWithoutExt}/node_code.py`, isMarkdown: false, generateFunc: generateNodeCode },
+                        'graph_code': { path: `${fileNameWithoutExt}/graph_code.py`, isMarkdown: false, generateFunc: generateGraphCode },
+                        'main': { path: `${fileNameWithoutExt}/main.py`, isMarkdown: false, generateFunc: generateMain }
+                    };
+                    
+                    if (fileMapping[fileKey]) {
+                        const mapping = fileMapping[fileKey];
+                        
+                        // Try to display existing file first
+                        const displayed = await displayExistingFile(mapping.path, mapping.isMarkdown);
+                        
+                        // If file doesn't exist, generate it
+                        if (!displayed) {
+                            await mapping.generateFunc();
+                        }
+                        
+                        return;
+                    }
                 }
                 
                 // Show loading
