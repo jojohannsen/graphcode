@@ -6,6 +6,7 @@ from gen_state_spec import generate_state_spec
 from gen_state_code import generate_state_code
 from gen_node_spec import generate_node_spec
 from gen_node_code import generate_node_code
+from gen_graph_code import generate_graph_code
 
 app = Flask(__name__)
 
@@ -394,6 +395,55 @@ def generate_node_code_endpoint():
             import traceback
             error_details = traceback.format_exc()
             print(f"ERROR in generate_node_code: {error_details}", flush=True)
+            return jsonify({'error': f'Generation failed: {str(e)}'}), 500
+            
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"ERROR in endpoint: {error_details}", flush=True)
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/generate/graph-code', methods=['POST'])
+def generate_graph_code_endpoint():
+    """Generate graph code from graph file and all dependencies"""
+    print("=== Starting graph code generation endpoint ===", flush=True)
+    try:
+        data = request.json
+        filename = data.get('filename')
+        print(f"Received request for filename: {filename}", flush=True)
+        
+        if not filename:
+            print("ERROR: No filename provided", flush=True)
+            return jsonify({'error': 'No filename provided'}), 400
+        
+        # Read the graph file
+        file_path = BASE_DIR / filename
+        print(f"Looking for file at: {file_path}", flush=True)
+        if not file_path.exists():
+            print("ERROR: File not found", flush=True)
+            return jsonify({'error': 'File not found'}), 404
+        
+        with open(file_path, 'r') as f:
+            graph_spec = f.read()
+        print(f"Successfully read graph spec ({len(graph_spec)} characters)", flush=True)
+        
+        # Extract graph name (filename without .txt)
+        graph_name = filename.replace('.txt', '')
+        print(f"Graph name: {graph_name}", flush=True)
+        
+        # Generate graph code
+        try:
+            print("Calling generate_graph_code function...", flush=True)
+            graph_code_content = generate_graph_code(graph_name, graph_spec)
+            print(f"Successfully generated graph code ({len(graph_code_content)} characters)", flush=True)
+            return jsonify({
+                'content': graph_code_content,
+                'success': True
+            })
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"ERROR in generate_graph_code: {error_details}", flush=True)
             return jsonify({'error': f'Generation failed: {str(e)}'}), 500
             
     except Exception as e:

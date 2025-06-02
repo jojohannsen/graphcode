@@ -311,7 +311,7 @@
                 <a href="#" class="nav-link disabled" data-file="state_code">state code</a>
                 <a href="#" class="nav-link disabled" data-file="node_spec">node spec</a>
                 <a href="#" class="nav-link disabled" data-file="node_code">node code</a>
-                <a href="#" class="nav-link disabled" data-file="graph_definition">graph definition</a>
+                <a href="#" class="nav-link disabled" data-file="graph_code">graph code</a>
                 <a href="#" class="nav-link disabled" data-file="main">main</a>
             </nav>
         </div>
@@ -406,7 +406,7 @@
                 state_code: `${graphName}/state_code.py`, 
                 node_spec: `${graphName}/node-spec.md`,
                 node_code: `${graphName}/node_code.py`,
-                graph_definition: `${graphName}/graph.py`,
+                graph_code: `${graphName}/graph_code.py`,
                 main: `${graphName}/main.py`
             };
             
@@ -431,7 +431,7 @@
                 state_code: document.querySelector('[data-file="state_code"]'),
                 node_spec: document.querySelector('[data-file="node_spec"]'),
                 node_code: document.querySelector('[data-file="node_code"]'),
-                graph_definition: document.querySelector('[data-file="graph_definition"]'),
+                graph_code: document.querySelector('[data-file="graph_code"]'),
                 main: document.querySelector('[data-file="main"]')
             };
             
@@ -459,13 +459,13 @@
                 buttons.node_code.classList.remove('disabled');
             }
             
-            // Graph definition enabled if node code button is enabled and node_code.py exists
+            // Graph code enabled if node code button is enabled and node_code.py exists
             if (!buttons.node_code.classList.contains('disabled') && existingFiles.node_code) {
-                buttons.graph_definition.classList.remove('disabled');
+                buttons.graph_code.classList.remove('disabled');
             }
             
-            // Main enabled if graph definition button is enabled and graph.py exists
-            if (!buttons.graph_definition.classList.contains('disabled') && existingFiles.graph_definition) {
+            // Main enabled if graph code button is enabled and graph_code.py exists
+            if (!buttons.graph_code.classList.contains('disabled') && existingFiles.graph_code) {
                 buttons.main.classList.remove('disabled');
             }
         }
@@ -691,6 +691,47 @@
             }
         }
         
+        // Generate graph code
+        async function generateGraphCode() {
+            if (!currentLoadedFile) {
+                alert('No file loaded');
+                return;
+            }
+            
+            const contentBody = document.getElementById('contentBody');
+            contentBody.innerHTML = '<div class="loading">Generating graph code...</div>';
+            
+            try {
+                const response = await fetch('/api/generate/graph-code', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ filename: currentLoadedFile })
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    contentBody.innerHTML = `<div class="loading">Error: ${data.error}</div>`;
+                    return;
+                }
+                
+                // Display the generated Python code with syntax highlighting
+                contentBody.innerHTML = `<pre><code class="language-python">${data.content}</code></pre>`;
+                Prism.highlightAll();
+                
+                // Refresh button states after successful generation
+                const fileNameWithoutExt = currentLoadedFile.replace('.txt', '');
+                const existingFiles = await checkExistingFiles(fileNameWithoutExt);
+                updateButtonStates(existingFiles);
+                
+            } catch (error) {
+                console.error('Error generating graph code:', error);
+                contentBody.innerHTML = '<div class="loading">Error generating graph code</div>';
+            }
+        }
+        
         // Handle navigation clicks
         document.querySelectorAll('.nav-link').forEach(link => {
             link.addEventListener('click', async (e) => {
@@ -732,6 +773,12 @@
                 // Special handling for node code
                 if (fileKey === 'node_code' && currentLoadedFile) {
                     await generateNodeCode();
+                    return;
+                }
+                
+                // Special handling for graph code
+                if (fileKey === 'graph_code' && currentLoadedFile) {
+                    await generateGraphCode();
                     return;
                 }
                 
