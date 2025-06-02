@@ -732,6 +732,47 @@
             }
         }
         
+        // Generate main code
+        async function generateMain() {
+            if (!currentLoadedFile) {
+                alert('No file loaded');
+                return;
+            }
+            
+            const contentBody = document.getElementById('contentBody');
+            contentBody.innerHTML = '<div class="loading">Generating main code...</div>';
+            
+            try {
+                const response = await fetch('/api/generate/main', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ filename: currentLoadedFile })
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    contentBody.innerHTML = `<div class="loading">Error: ${data.error}</div>`;
+                    return;
+                }
+                
+                // Display the generated Python code with syntax highlighting
+                contentBody.innerHTML = `<pre><code class="language-python">${data.content}</code></pre>`;
+                Prism.highlightAll();
+                
+                // Refresh button states after successful generation (though main is the last step)
+                const fileNameWithoutExt = currentLoadedFile.replace('.txt', '');
+                const existingFiles = await checkExistingFiles(fileNameWithoutExt);
+                updateButtonStates(existingFiles);
+                
+            } catch (error) {
+                console.error('Error generating main code:', error);
+                contentBody.innerHTML = '<div class="loading">Error generating main code</div>';
+            }
+        }
+        
         // Handle navigation clicks
         document.querySelectorAll('.nav-link').forEach(link => {
             link.addEventListener('click', async (e) => {
@@ -779,6 +820,12 @@
                 // Special handling for graph code
                 if (fileKey === 'graph_code' && currentLoadedFile) {
                     await generateGraphCode();
+                    return;
+                }
+                
+                // Special handling for main
+                if (fileKey === 'main' && currentLoadedFile) {
+                    await generateMain();
                     return;
                 }
                 
