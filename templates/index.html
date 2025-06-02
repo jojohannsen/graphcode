@@ -43,6 +43,28 @@
             font-size: 14px;
             line-height: 1.6;
             position: relative;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .graph-header {
+            background-color: #2d3142;
+            color: #e8e9eb;
+            padding: 8px 20px;
+            font-size: 13px;
+            font-weight: 500;
+            border-bottom: 1px solid #3a3d4e;
+            min-height: 36px;
+            display: flex;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        
+        .graph-content-wrapper {
+            padding: 20px;
+            flex-grow: 1;
+            overflow-y: auto;
         }
         
         .file-list {
@@ -127,13 +149,6 @@
             border-right: 1px solid #2a2a2a;
         }
         
-        .nav-title {
-            font-size: 18px;
-            font-weight: 600;
-            margin-bottom: 20px;
-            color: #ffffff;
-        }
-        
         .nav-link {
             display: block;
             padding: 12px 16px;
@@ -144,9 +159,10 @@
             border-radius: 6px;
             transition: all 0.3s ease;
             font-size: 14px;
+            cursor: pointer;
         }
         
-        .nav-link:hover {
+        .nav-link:hover:not(.disabled) {
             background-color: #353535;
             color: #ffffff;
             transform: translateX(4px);
@@ -155,6 +171,17 @@
         .nav-link.active {
             background-color: #2a4e7d;
             color: #ffffff;
+        }
+        
+        .nav-link.disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            background-color: #1d1d1d;
+            color: #606060;
+        }
+        
+        .nav-link.disabled:hover {
+            transform: none;
         }
         
         /* Third column - Content display */
@@ -263,25 +290,29 @@
     <div class="container">
         <!-- First column: Graph/File List -->
         <div class="column graph-column" id="graphColumn">
-            <div class="file-list" id="fileList">
-                <div class="loading">Loading files...</div>
+            <div class="graph-header" id="graphHeader" style="display: none;">
+                <span id="selectedFileName"></span>
             </div>
-            <div class="graph-display" id="graphDisplay">
-                <button class="close-button" id="closeGraph" title="Close and return to file list">✕</button>
-                <div id="graphContent"></div>
+            <div class="graph-content-wrapper">
+                <div class="file-list" id="fileList">
+                    <div class="loading">Loading files...</div>
+                </div>
+                <div class="graph-display" id="graphDisplay">
+                    <button class="close-button" id="closeGraph" title="Close and return to file list">✕</button>
+                    <div id="graphContent"></div>
+                </div>
             </div>
         </div>
         
         <!-- Second column: Navigation -->
         <div class="column nav-column">
-            <h2 class="nav-title">Navigation</h2>
-            <nav>
-                <a href="#" class="nav-link" data-file="state_spec">state spec</a>
-                <a href="#" class="nav-link" data-file="state_code">state code</a>
-                <a href="#" class="nav-link" data-file="node_spec">node spec</a>
-                <a href="#" class="nav-link" data-file="node_code">node code</a>
-                <a href="#" class="nav-link" data-file="graph_definition">graph definition</a>
-                <a href="#" class="nav-link" data-file="main">main</a>
+            <nav style="padding-top: 20px;">
+                <a href="#" class="nav-link disabled" data-file="state_spec">state spec</a>
+                <a href="#" class="nav-link disabled" data-file="state_code">state code</a>
+                <a href="#" class="nav-link disabled" data-file="node_spec">node spec</a>
+                <a href="#" class="nav-link disabled" data-file="node_code">node code</a>
+                <a href="#" class="nav-link disabled" data-file="graph_definition">graph definition</a>
+                <a href="#" class="nav-link disabled" data-file="main">main</a>
             </nav>
         </div>
         
@@ -380,6 +411,18 @@
                 document.getElementById('fileList').style.display = 'none';
                 document.getElementById('graphDisplay').style.display = 'block';
                 
+                // Show header with filename
+                const fileNameWithoutExt = filename.replace('.txt', '');
+                document.getElementById('selectedFileName').textContent = fileNameWithoutExt;
+                document.getElementById('graphHeader').style.display = 'flex';
+                
+                // Enable only the state spec button
+                document.querySelectorAll('.nav-link').forEach(link => {
+                    link.classList.add('disabled');
+                });
+                const stateSpecLink = document.querySelector('[data-file="state_spec"]');
+                stateSpecLink.classList.remove('disabled');
+                
                 parseGraph(data.content);
             } catch (error) {
                 console.error('Error loading graph:', error);
@@ -391,6 +434,17 @@
         function showFileList() {
             document.getElementById('fileList').style.display = 'block';
             document.getElementById('graphDisplay').style.display = 'none';
+            document.getElementById('graphHeader').style.display = 'none';
+            
+            // Disable all navigation links
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.classList.add('disabled');
+                link.classList.remove('active');
+            });
+            
+            // Reset content area
+            document.getElementById('contentHeader').textContent = 'Welcome';
+            document.getElementById('contentBody').innerHTML = '<p>Select a file from the navigation menu to view its contents.</p>';
         }
         
         // Initialize close button
@@ -402,6 +456,11 @@
         document.querySelectorAll('.nav-link').forEach(link => {
             link.addEventListener('click', async (e) => {
                 e.preventDefault();
+                
+                // Check if link is disabled
+                if (link.classList.contains('disabled')) {
+                    return;
+                }
                 
                 // Update active state
                 document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
@@ -440,9 +499,6 @@
         // Initialize the application
         loadTxtFiles();
         initializeCloseButton();
-        
-        // Load first file by default
-        document.querySelector('.nav-link').click();
     </script>
 </body>
 </html>
