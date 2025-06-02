@@ -396,6 +396,9 @@
             }
         }
         
+        // Track current loaded file
+        let currentLoadedFile = null;
+        
         // Load graph from specific file
         async function loadGraphFromFile(filename) {
             try {
@@ -406,6 +409,9 @@
                     alert(`Error loading file: ${data.error}`);
                     return;
                 }
+                
+                // Store current file
+                currentLoadedFile = filename;
                 
                 // Switch to graph display
                 document.getElementById('fileList').style.display = 'none';
@@ -436,6 +442,9 @@
             document.getElementById('graphDisplay').style.display = 'none';
             document.getElementById('graphHeader').style.display = 'none';
             
+            // Clear current file
+            currentLoadedFile = null;
+            
             // Disable all navigation links
             document.querySelectorAll('.nav-link').forEach(link => {
                 link.classList.add('disabled');
@@ -450,6 +459,45 @@
         // Initialize close button
         function initializeCloseButton() {
             document.getElementById('closeGraph').addEventListener('click', showFileList);
+        }
+        
+        // Generate state spec
+        async function generateStateSpec() {
+            if (!currentLoadedFile) {
+                alert('No file loaded');
+                return;
+            }
+            
+            const contentBody = document.getElementById('contentBody');
+            contentBody.innerHTML = '<div class="loading">Generating state specification...</div>';
+            
+            try {
+                const response = await fetch('/api/generate/state-spec', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ filename: currentLoadedFile })
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    contentBody.innerHTML = `<div class="loading">Error: ${data.error}</div>`;
+                    return;
+                }
+                
+                // Display the generated markdown
+                contentBody.innerHTML = `<div class="markdown-content">${marked.parse(data.content)}</div>`;
+                
+                // Enable the state code button
+                const stateCodeLink = document.querySelector('[data-file="state_code"]');
+                stateCodeLink.classList.remove('disabled');
+                
+            } catch (error) {
+                console.error('Error generating state spec:', error);
+                contentBody.innerHTML = '<div class="loading">Error generating state specification</div>';
+            }
         }
         
         // Handle navigation clicks
@@ -471,6 +519,12 @@
                 
                 // Update header
                 document.getElementById('contentHeader').textContent = fileName;
+                
+                // Special handling for state spec
+                if (fileKey === 'state_spec' && currentLoadedFile) {
+                    await generateStateSpec();
+                    return;
+                }
                 
                 // Show loading
                 document.getElementById('contentBody').innerHTML = '<div class="loading">Loading...</div>';
