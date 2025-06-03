@@ -203,6 +203,7 @@
             align-items: center;
             flex-shrink: 0;
             margin: 0;
+            justify-content: space-between;
         }
         
         .content-header.welcome-style {
@@ -222,9 +223,6 @@
         }
         
         .delete-button {
-            position: absolute;
-            top: 15px;
-            right: 15px;
             background: none;
             border: none;
             color: #666;
@@ -233,7 +231,7 @@
             padding: 4px;
             border-radius: 3px;
             transition: all 0.2s;
-            z-index: 10;
+            margin-left: auto;
             display: none;
         }
         
@@ -332,6 +330,122 @@
         ::-webkit-scrollbar-thumb:hover {
             background: #4a4a4a;
         }
+        
+        /* Modal styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+        
+        .modal-overlay.show {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        .modal {
+            background-color: #2d3142;
+            border-radius: 12px;
+            padding: 0;
+            min-width: 400px;
+            max-width: 500px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            transform: scale(0.7) translateY(-20px);
+            transition: all 0.3s ease;
+            border: 1px solid #3a3d4e;
+        }
+        
+        .modal-overlay.show .modal {
+            transform: scale(1) translateY(0);
+        }
+        
+        .modal-header {
+            padding: 24px 24px 16px 24px;
+            border-bottom: 1px solid #3a3d4e;
+        }
+        
+        .modal-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #ffffff;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .modal-icon {
+            font-size: 20px;
+            color: #ff6b6b;
+        }
+        
+        .modal-body {
+            padding: 20px 24px;
+        }
+        
+        .modal-message {
+            color: #e0e0e0;
+            font-size: 14px;
+            line-height: 1.5;
+            margin: 0;
+        }
+        
+        .modal-filename {
+            color: #9cdcfe;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-weight: 500;
+        }
+        
+        .modal-footer {
+            padding: 16px 24px 24px 24px;
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+        
+        .modal-button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            min-width: 80px;
+        }
+        
+        .modal-button-cancel {
+            background-color: #3a3d4e;
+            color: #e0e0e0;
+        }
+        
+        .modal-button-cancel:hover {
+            background-color: #4a4d5e;
+        }
+        
+        .modal-button-delete {
+            background-color: #ff6b6b;
+            color: #ffffff;
+        }
+        
+        .modal-button-delete:hover {
+            background-color: #ff5252;
+        }
+        
+        .modal-button:focus {
+            outline: 2px solid #569cd6;
+            outline-offset: 2px;
+        }
     </style>
 </head>
 <body>
@@ -366,12 +480,37 @@
         
         <!-- Third column: Content Display -->
         <div class="column content-column">
-            <div class="content-header welcome-style" id="contentHeader">Welcome</div>
-            <div class="content-body-wrapper">
+            <div class="content-header welcome-style" id="contentHeader">
+                <span>Welcome</span>
                 <button class="delete-button" id="deleteButton" title="Delete this file">🗑️</button>
+            </div>
+            <div class="content-body-wrapper">
                 <div class="content-body" id="contentBody">
                     <p>Select a file from the navigation menu to view its contents.</p>
                 </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Confirm Delete Modal -->
+    <div class="modal-overlay" id="confirmModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title">
+                    <span class="modal-icon">⚠️</span>
+                    Confirm Delete
+                </h3>
+            </div>
+            <div class="modal-body">
+                <p class="modal-message">
+                    Are you sure you want to delete <span class="modal-filename" id="modalFilename"></span>?
+                    <br><br>
+                    This action cannot be undone.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-button modal-button-cancel" id="modalCancel">Cancel</button>
+                <button class="modal-button modal-button-delete" id="modalConfirm">Delete</button>
             </div>
         </div>
     </div>
@@ -573,7 +712,7 @@
             
             // Reset content area with welcome style
             const contentHeader = document.getElementById('contentHeader');
-            contentHeader.textContent = 'Welcome';
+            contentHeader.innerHTML = '<span>Welcome</span><button class="delete-button" id="deleteButton" title="Delete this file">🗑️</button>';
             contentHeader.className = 'content-header welcome-style';
             document.getElementById('contentBody').innerHTML = '<p>Select a file from the navigation menu to view its contents.</p>';
             hideDeleteButton();
@@ -906,6 +1045,59 @@
             currentDisplayedArtifact = null;
         }
         
+        // Show confirm modal
+        function showConfirmModal(fileName, onConfirm) {
+            const modal = document.getElementById('confirmModal');
+            const modalFilename = document.getElementById('modalFilename');
+            
+            modalFilename.textContent = fileName;
+            modal.classList.add('show');
+            
+            // Handle confirm button
+            const confirmButton = document.getElementById('modalConfirm');
+            const cancelButton = document.getElementById('modalCancel');
+            
+            const handleConfirm = () => {
+                hideConfirmModal();
+                onConfirm();
+                confirmButton.removeEventListener('click', handleConfirm);
+                cancelButton.removeEventListener('click', handleCancel);
+            };
+            
+            const handleCancel = () => {
+                hideConfirmModal();
+                confirmButton.removeEventListener('click', handleConfirm);
+                cancelButton.removeEventListener('click', handleCancel);
+            };
+            
+            confirmButton.addEventListener('click', handleConfirm);
+            cancelButton.addEventListener('click', handleCancel);
+            
+            // Close on overlay click
+            const handleOverlayClick = (e) => {
+                if (e.target === modal) {
+                    handleCancel();
+                    modal.removeEventListener('click', handleOverlayClick);
+                }
+            };
+            modal.addEventListener('click', handleOverlayClick);
+            
+            // Close on Escape key
+            const handleEscape = (e) => {
+                if (e.key === 'Escape') {
+                    handleCancel();
+                    document.removeEventListener('keydown', handleEscape);
+                }
+            };
+            document.addEventListener('keydown', handleEscape);
+        }
+        
+        // Hide confirm modal
+        function hideConfirmModal() {
+            const modal = document.getElementById('confirmModal');
+            modal.classList.remove('show');
+        }
+        
         // Delete current artifact
         async function deleteCurrentArtifact() {
             if (!currentDisplayedArtifact) {
@@ -913,44 +1105,41 @@
             }
             
             const fileName = currentDisplayedArtifact.split('/').pop();
-            const confirmed = confirm(`Delete '${fileName}'?`);
             
-            if (!confirmed) {
-                return;
-            }
-            
-            try {
-                const response = await fetch(`/api/delete-file/${currentDisplayedArtifact}`, {
-                    method: 'DELETE'
-                });
-                
-                const data = await response.json();
-                
-                if (data.error) {
-                    alert(`Error deleting file: ${data.error}`);
-                    return;
+            showConfirmModal(fileName, async () => {
+                try {
+                    const response = await fetch(`/api/delete-file/${currentDisplayedArtifact}`, {
+                        method: 'DELETE'
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.error) {
+                        alert(`Error deleting file: ${data.error}`);
+                        return;
+                    }
+                    
+                    // Update UI after successful deletion
+                    const contentBody = document.getElementById('contentBody');
+                    contentBody.innerHTML = `<div style="text-align: center; padding: 40px; color: #888;">
+                        <p>File '${fileName}' has been deleted.</p>
+                        <p>Click the corresponding button to regenerate it.</p>
+                    </div>`;
+                    
+                    hideDeleteButton();
+                    
+                    // Refresh button states
+                    if (currentLoadedFile) {
+                        const fileNameWithoutExt = currentLoadedFile.replace('.txt', '');
+                        const existingFiles = await checkExistingFiles(fileNameWithoutExt);
+                        updateButtonStates(existingFiles);
+                    }
+                    
+                } catch (error) {
+                    console.error('Error deleting file:', error);
+                    alert('Error deleting file');
                 }
-                
-                // Update UI after successful deletion
-                const contentBody = document.getElementById('contentBody');
-                contentBody.innerHTML = `<div style="text-align: center; padding: 40px; color: #888;">
-                    <p>File '${fileName}' has been deleted.</p>
-                    <p>Click the corresponding button to regenerate it.</p>
-                </div>`;
-                
-                hideDeleteButton();
-                
-                // Refresh button states
-                if (currentLoadedFile) {
-                    const fileNameWithoutExt = currentLoadedFile.replace('.txt', '');
-                    const existingFiles = await checkExistingFiles(fileNameWithoutExt);
-                    updateButtonStates(existingFiles);
-                }
-                
-            } catch (error) {
-                console.error('Error deleting file:', error);
-                alert('Error deleting file');
-            }
+            });
         }
         
         // Handle navigation clicks
@@ -972,7 +1161,7 @@
                 
                 // Update header with file-loaded style
                 const contentHeader = document.getElementById('contentHeader');
-                contentHeader.textContent = fileName;
+                contentHeader.innerHTML = `<span>${fileName}</span><button class="delete-button" id="deleteButton" title="Delete this file">🗑️</button>`;
                 contentHeader.className = 'content-header';
                 
                 // Special handling for files that can be generated
@@ -1032,8 +1221,12 @@
         loadTxtFiles();
         initializeCloseButton();
         
-        // Initialize delete button
-        document.getElementById('deleteButton').addEventListener('click', deleteCurrentArtifact);
+        // Initialize delete button (use event delegation since button gets recreated)
+        document.addEventListener('click', function(e) {
+            if (e.target && e.target.id === 'deleteButton') {
+                deleteCurrentArtifact();
+            }
+        });
     </script>
 </body>
 </html>
