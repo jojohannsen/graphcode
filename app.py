@@ -540,6 +540,27 @@ def delete_file(file_path):
         print(f"Error deleting file {full_path}: {e}", flush=True)
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/save-file/<path:file_path>', methods=['PUT'])
+def save_file(file_path):
+    """Save content to a file"""
+    try:
+        data = request.json
+        content = data.get('content', '')
+        
+        full_path = BASE_DIR / file_path
+        
+        # Ensure parent directory exists
+        full_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(full_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        
+        print(f"Saved file: {full_path}", flush=True)
+        return jsonify({'success': True, 'message': 'File saved successfully'}), 200
+    except Exception as e:
+        print(f"Error saving file {file_path}: {e}", flush=True)
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     # Disable auto-reload to prevent interruption when files are generated
     app.run(debug=True, use_reloader=False)

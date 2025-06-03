@@ -90,22 +90,31 @@
             color: #ffffff;
         }
         
-        .close-button {
+        .graph-header-buttons {
             position: absolute;
             top: 10px;
             right: 15px;
+            display: flex;
+            gap: 8px;
+        }
+        
+        .header-button {
             background: none;
             border: none;
             color: #666;
-            font-size: 18px;
+            font-size: 16px;
             cursor: pointer;
             padding: 4px;
             border-radius: 3px;
             transition: all 0.2s;
         }
         
-        .close-button:hover {
+        .header-button:hover {
             background-color: #2a2a2a;
+            color: #ccc;
+        }
+        
+        .header-button.edit-button:hover {
             color: #ccc;
         }
         
@@ -446,6 +455,75 @@
             outline: 2px solid #569cd6;
             outline-offset: 2px;
         }
+        
+        /* Edit mode styles */
+        .graph-editor {
+            display: none;
+            width: 100%;
+            height: 400px;
+            background-color: #1e1e1e;
+            color: #e0e0e0;
+            border: 1px solid #3a3a3a;
+            border-radius: 4px;
+            padding: 12px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            resize: vertical;
+            outline: none;
+            margin-bottom: 12px;
+        }
+        
+        .graph-editor:focus {
+            border-color: #569cd6;
+        }
+        
+        .graph-editor.show {
+            display: block;
+        }
+        
+        .edit-controls {
+            display: none;
+            gap: 12px;
+            justify-content: flex-end;
+            padding: 8px 0;
+        }
+        
+        .edit-controls.show {
+            display: flex;
+        }
+        
+        .edit-button-control {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .save-button-control {
+            background-color: #4caf50;
+            color: #ffffff;
+        }
+        
+        .save-button-control:hover {
+            background-color: #66bb6a;
+        }
+        
+        .cancel-button-control {
+            background-color: #3a3d4e;
+            color: #e0e0e0;
+        }
+        
+        .cancel-button-control:hover {
+            background-color: #4a4d5e;
+        }
+        
+        #graphContent.edit-mode {
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -460,8 +538,16 @@
                     <div class="loading">Loading files...</div>
                 </div>
                 <div class="graph-display" id="graphDisplay">
-                    <button class="close-button" id="closeGraph" title="Close and return to file list">✕</button>
+                    <div class="graph-header-buttons">
+                        <button class="header-button edit-button" id="editGraph" title="Edit graph content">✎</button>
+                        <button class="header-button" id="closeGraph" title="Close and return to file list">✕</button>
+                    </div>
                     <div id="graphContent"></div>
+                    <textarea class="graph-editor" id="graphEditor" placeholder="Enter graph content here..."></textarea>
+                    <div class="edit-controls" id="editControls">
+                        <button class="edit-button-control cancel-button-control" id="cancelEdit">Cancel</button>
+                        <button class="edit-button-control save-button-control" id="saveGraph">Save</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -511,6 +597,29 @@
             <div class="modal-footer">
                 <button class="modal-button modal-button-cancel" id="modalCancel">Cancel</button>
                 <button class="modal-button modal-button-delete" id="modalConfirm">Delete</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Confirm Save Modal -->
+    <div class="modal-overlay" id="confirmSaveModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title">
+                    <span class="modal-icon">💾</span>
+                    Confirm Save
+                </h3>
+            </div>
+            <div class="modal-body">
+                <p class="modal-message">
+                    Are you sure you want to save changes to <span class="modal-filename" id="saveModalFilename"></span>?
+                    <br><br>
+                    This will overwrite the original file.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-button modal-button-cancel" id="saveModalCancel">Cancel</button>
+                <button class="modal-button modal-button-delete" id="saveModalConfirm">Save</button>
             </div>
         </div>
     </div>
@@ -589,6 +698,8 @@
         // Track current loaded file and displayed artifact
         let currentLoadedFile = null;
         let currentDisplayedArtifact = null;
+        let isEditMode = false;
+        let originalGraphContent = '';
         
         // Check which files exist for a given graph name
         async function checkExistingFiles(graphName) {
@@ -672,8 +783,9 @@
                     return;
                 }
                 
-                // Store current file
+                // Store current file and content
                 currentLoadedFile = filename;
+                originalGraphContent = data.content;
                 
                 // Switch to graph display
                 document.getElementById('fileList').style.display = 'none';
@@ -721,6 +833,164 @@
         // Initialize close button
         function initializeCloseButton() {
             document.getElementById('closeGraph').addEventListener('click', showFileList);
+        }
+        
+        // Enter edit mode
+        function enterEditMode() {
+            if (isEditMode) return;
+            
+            isEditMode = true;
+            
+            // Show editor with current content
+            const editor = document.getElementById('graphEditor');
+            editor.value = originalGraphContent;
+            editor.classList.add('show');
+            
+            // Hide graph display and show edit controls
+            document.getElementById('graphContent').classList.add('edit-mode');
+            document.getElementById('editControls').classList.add('show');
+            
+            // Hide edit button
+            document.getElementById('editGraph').style.display = 'none';
+            
+            // Disable all navigation buttons
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.classList.add('disabled');
+                link.style.pointerEvents = 'none';
+                link.style.opacity = '0.3';
+            });
+            
+            // Focus the editor
+            editor.focus();
+        }
+        
+        // Exit edit mode
+        function exitEditMode(saveChanges = false) {
+            if (!isEditMode) return;
+            
+            const editor = document.getElementById('graphEditor');
+            
+            if (saveChanges) {
+                // Update graph content with edited content
+                originalGraphContent = editor.value;
+                parseGraph(originalGraphContent);
+            }
+            
+            isEditMode = false;
+            
+            // Hide editor and edit controls
+            editor.classList.remove('show');
+            document.getElementById('editControls').classList.remove('show');
+            
+            // Show graph display and edit button
+            document.getElementById('graphContent').classList.remove('edit-mode');
+            document.getElementById('editGraph').style.display = 'block';
+            
+            // Re-enable navigation buttons (with proper state checking)
+            if (currentLoadedFile) {
+                const fileNameWithoutExt = currentLoadedFile.replace('.txt', '');
+                checkExistingFiles(fileNameWithoutExt).then(existingFiles => {
+                    updateButtonStates(existingFiles);
+                    // Remove the edit-mode specific styling
+                    document.querySelectorAll('.nav-link').forEach(link => {
+                        link.style.pointerEvents = '';
+                        link.style.opacity = '';
+                    });
+                });
+            }
+        }
+        
+        // Show save confirmation modal
+        function showSaveConfirmModal(fileName, onConfirm) {
+            const modal = document.getElementById('confirmSaveModal');
+            const modalFilename = document.getElementById('saveModalFilename');
+            
+            modalFilename.textContent = fileName;
+            modal.classList.add('show');
+            
+            // Handle confirm button
+            const confirmButton = document.getElementById('saveModalConfirm');
+            const cancelButton = document.getElementById('saveModalCancel');
+            
+            const handleConfirm = () => {
+                hideSaveConfirmModal();
+                onConfirm();
+                confirmButton.removeEventListener('click', handleConfirm);
+                cancelButton.removeEventListener('click', handleCancel);
+            };
+            
+            const handleCancel = () => {
+                hideSaveConfirmModal();
+                confirmButton.removeEventListener('click', handleConfirm);
+                cancelButton.removeEventListener('click', handleCancel);
+            };
+            
+            confirmButton.addEventListener('click', handleConfirm);
+            cancelButton.addEventListener('click', handleCancel);
+            
+            // Close on overlay click
+            const handleOverlayClick = (e) => {
+                if (e.target === modal) {
+                    handleCancel();
+                    modal.removeEventListener('click', handleOverlayClick);
+                }
+            };
+            modal.addEventListener('click', handleOverlayClick);
+            
+            // Close on Escape key
+            const handleEscape = (e) => {
+                if (e.key === 'Escape') {
+                    handleCancel();
+                    document.removeEventListener('keydown', handleEscape);
+                }
+            };
+            document.addEventListener('keydown', handleEscape);
+        }
+        
+        // Hide save confirmation modal
+        function hideSaveConfirmModal() {
+            const modal = document.getElementById('confirmSaveModal');
+            modal.classList.remove('show');
+        }
+        
+        // Save graph changes
+        async function saveGraphChanges() {
+            if (!currentLoadedFile) {
+                alert('No file loaded');
+                return;
+            }
+            
+            const editor = document.getElementById('graphEditor');
+            const newContent = editor.value;
+            
+            showSaveConfirmModal(currentLoadedFile, async () => {
+                try {
+                    const response = await fetch(`/api/save-file/${currentLoadedFile}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ content: newContent })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.error) {
+                        alert(`Error saving file: ${data.error}`);
+                        return;
+                    }
+                    
+                    // Exit edit mode and update display
+                    exitEditMode(true);
+                    
+                    // Show success message (optional)
+                    console.log('File saved successfully');
+                    
+                } catch (error) {
+                    console.error('Error saving file:', error);
+                    alert('Error saving file');
+                }
+            });
         }
         
         // Generate state spec
@@ -1225,6 +1495,21 @@
         document.addEventListener('click', function(e) {
             if (e.target && e.target.id === 'deleteButton') {
                 deleteCurrentArtifact();
+            }
+            
+            // Handle edit button
+            if (e.target && e.target.id === 'editGraph') {
+                enterEditMode();
+            }
+            
+            // Handle save button
+            if (e.target && e.target.id === 'saveGraph') {
+                saveGraphChanges();
+            }
+            
+            // Handle cancel button
+            if (e.target && e.target.id === 'cancelEdit') {
+                exitEditMode(false);
             }
         });
     </script>
