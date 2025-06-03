@@ -457,12 +457,22 @@
         }
         
         /* Edit mode styles */
-        .graph-editor {
+        .editor-container {
             display: none;
+            position: relative;
+            width: 100%;
+            margin-bottom: 12px;
+        }
+        
+        .editor-container.show {
+            display: block;
+        }
+        
+        .graph-editor {
             width: 100%;
             height: 400px;
-            background-color: #1e1e1e;
-            color: #e0e0e0;
+            background-color: transparent;
+            color: transparent;
             border: 1px solid #3a3a3a;
             border-radius: 4px;
             padding: 12px;
@@ -471,15 +481,33 @@
             line-height: 1.6;
             resize: vertical;
             outline: none;
-            margin-bottom: 12px;
+            position: relative;
+            z-index: 2;
+            caret-color: #e0e0e0;
         }
         
         .graph-editor:focus {
             border-color: #569cd6;
         }
         
-        .graph-editor.show {
-            display: block;
+        .editor-highlight {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #1e1e1e;
+            border: 1px solid transparent;
+            border-radius: 4px;
+            padding: 12px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            pointer-events: none;
+            z-index: 1;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            overflow: hidden;
         }
         
         .edit-controls {
@@ -543,7 +571,10 @@
                         <button class="header-button" id="closeGraph" title="Close and return to file list">✕</button>
                     </div>
                     <div id="graphContent"></div>
-                    <textarea class="graph-editor" id="graphEditor" placeholder="Enter graph content here..."></textarea>
+                    <div class="editor-container" id="editorContainer">
+                        <div class="editor-highlight" id="editorHighlight"></div>
+                        <textarea class="graph-editor" id="graphEditor" placeholder="Enter graph content here..."></textarea>
+                    </div>
                     <div class="edit-controls" id="editControls">
                         <button class="edit-button-control cancel-button-control" id="cancelEdit">Cancel</button>
                         <button class="edit-button-control save-button-control" id="saveGraph">Save</button>
@@ -667,6 +698,61 @@
                     graphContent_div.appendChild(lineDiv);
                 }
             });
+        }
+        
+        // Apply syntax highlighting to editor
+        function highlightEditorContent(content) {
+            const lines = content.split('\n');
+            let highlighted = '';
+            
+            lines.forEach((line, index) => {
+                if (index > 0) highlighted += '\n';
+                
+                if (line.trim().startsWith('#')) {
+                    // Comment
+                    highlighted += `<span class="graph-comment">${escapeHtml(line)}</span>`;
+                } else if (line.includes('->')) {
+                    // Connection
+                    const parts = line.split('->');
+                    const source = parts[0].trim();
+                    const target = parts[1].trim();
+                    const beforeSource = line.substring(0, line.indexOf(source));
+                    const afterTarget = line.substring(line.indexOf(target) + target.length);
+                    
+                    let sourceClass = 'graph-node';
+                    let targetClass = 'graph-node';
+                    
+                    if (source === 'State') sourceClass = 'graph-state';
+                    if (target === 'END') targetClass = 'graph-end';
+                    
+                    highlighted += `${escapeHtml(beforeSource)}<span class="${sourceClass}">${escapeHtml(source)}</span> <span class="graph-arrow">-></span> <span class="${targetClass}">${escapeHtml(target)}</span>${escapeHtml(afterTarget)}`;
+                } else {
+                    // Other content
+                    highlighted += escapeHtml(line);
+                }
+            });
+            
+            return highlighted;
+        }
+        
+        // Escape HTML characters
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Update editor highlighting
+        function updateEditorHighlight() {
+            const editor = document.getElementById('graphEditor');
+            const highlight = document.getElementById('editorHighlight');
+            const content = editor.value;
+            
+            highlight.innerHTML = highlightEditorContent(content);
+            
+            // Sync scroll position
+            highlight.scrollTop = editor.scrollTop;
+            highlight.scrollLeft = editor.scrollLeft;
         }
         
         // Load and display txt files
@@ -843,8 +929,13 @@
             
             // Show editor with current content
             const editor = document.getElementById('graphEditor');
+            const editorContainer = document.getElementById('editorContainer');
+            
             editor.value = originalGraphContent;
-            editor.classList.add('show');
+            editorContainer.classList.add('show');
+            
+            // Initial highlighting
+            updateEditorHighlight();
             
             // Hide graph display and show edit controls
             document.getElementById('graphContent').classList.add('edit-mode');
@@ -860,6 +951,10 @@
                 link.style.opacity = '0.3';
             });
             
+            // Add event listeners for real-time highlighting
+            editor.addEventListener('input', updateEditorHighlight);
+            editor.addEventListener('scroll', updateEditorHighlight);
+            
             // Focus the editor
             editor.focus();
         }
@@ -869,6 +964,7 @@
             if (!isEditMode) return;
             
             const editor = document.getElementById('graphEditor');
+            const editorContainer = document.getElementById('editorContainer');
             
             if (saveChanges) {
                 // Update graph content with edited content
@@ -878,8 +974,12 @@
             
             isEditMode = false;
             
+            // Remove event listeners
+            editor.removeEventListener('input', updateEditorHighlight);
+            editor.removeEventListener('scroll', updateEditorHighlight);
+            
             // Hide editor and edit controls
-            editor.classList.remove('show');
+            editorContainer.classList.remove('show');
             document.getElementById('editControls').classList.remove('show');
             
             // Show graph display and edit button
