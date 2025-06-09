@@ -9,7 +9,7 @@ Analyze the provided graph notation and generate a Python State class that:
 1. **Identifies Required Fields**: Determine what data needs to flow through the graph
 2. **Applies Proper Typing**: Use appropriate Python type hints and LangGraph annotations
 3. **Supports All Patterns**: Ensure the state works with the specific patterns used in the graph
-4. **Follows Best Practices**: Use clear naming conventions and proper field design
+4. **Follows Best Practices**: Use clear naming conventions and proper field design.  Do not create Node functions with the same name as a field in the state class.
 
 ## Analysis Framework
 
@@ -20,6 +20,9 @@ Identify which design patterns are used in the graph:
 - Conditional routing (routing functions)
 - Worker node processing (list processing)
 - Human-in-the-loop interactions
+- Chat and messaging patterns (MessagesState usage)
+- Multi-agent conversation patterns
+- Tool integration patterns
 
 ### Step 2: Data Flow Analysis
 For each pattern identified, determine:
@@ -35,24 +38,58 @@ Based on the patterns and data flow:
 - **Accumulation fields**: Results that need to be collected (use `Annotated[list[T], operator.add]`)
 - **Output fields**: Final results from the graph
 - **Routing fields**: Data used by routing functions for decisions
+- **Chat/Message fields**: For conversation history and messaging (consider MessagesState)
+- **Tool integration fields**: For external tool results and function calls
+- **Multi-agent fields**: For agent identification and conversation orchestration
 
 ### Step 4: State Class Construction
 Generate the complete State class with:
 - Proper imports (`from typing import Annotated, Optional, List, Dict, Any`)
-- LangGraph imports (`from langgraph.graph import add_messages`)
+- LangGraph imports (`from langgraph.graph import add_messages, MessagesState`)
+- Langchain message imports for chat patterns (`from langchain_core.messages import HumanMessage, AIMessage, SystemMessage`)
 - Appropriate field annotations for different patterns
 - Clear field names and documentation
+- Decision on MessagesState vs TypedDict base class
 
 ## Output Format
 
-Provide your analysis and the complete State class code:
+Provide your analysis and the complete State class code. Choose the appropriate base class:
 
+**For Chat/Messaging Applications:**
 ```python
 from typing import Annotated, Optional, List, Dict, Any
 import operator
+from langgraph.graph import MessagesState
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+
+class StateClass(MessagesState):
+    """
+    Chat state class for [brief description of the graph's purpose]
+    
+    Inherits from MessagesState for automatic message handling.
+    This state supports the following patterns:
+    - [list the identified patterns]
+    """
+    
+    # Additional chat-specific fields beyond built-in 'messages'
+    conversation_active: bool = True  # Control conversation flow
+    user_preferences: Dict[str, Any] = {}  # User settings and preferences
+    current_agent: Optional[str] = None  # For multi-agent patterns
+    
+    # Tool integration fields (if needed)
+    tool_results: Optional[Dict[str, Any]] = None  # Results from external tools
+    pending_tools: List[str] = []  # Tools waiting to be executed
+    
+    # [Other field categories as needed]
+```
+
+**For Non-Chat Applications:**
+```python
+from typing import Annotated, Optional, List, Dict, Any, TypedDict
+import operator
 from langgraph.graph import add_messages
 
-class StateClass:
+class StateClass(TypedDict):
     """
     State class for [brief description of the graph's purpose]
     
@@ -75,10 +112,28 @@ class StateClass:
 
 ## Special Considerations
 
+### MessagesState vs TypedDict Decision
+- **Use MessagesState when**: Graph involves chat, conversation, message exchange, multi-agent communication, or any pattern with human-AI interaction through messages
+  - Keywords to look for: "chat", "conversation", "message", "user input", "agent", "response"
+  - Patterns: `get_user_input`, `generate_response`, `chat_router`, human-in-the-loop with conversational flow
+- **Use TypedDict when**: Graph processes data, performs computations, workflows, or any non-conversational patterns
+  - Keywords: "process", "analyze", "transform", "calculate", "workflow"
+  - Patterns: Data processing, parallel computation, file handling, non-interactive workflows
+
+### MessagesState Benefits
+- **Automatic message handling**: Built-in `messages` field with `add_messages` reducer
+- **Message type support**: Handles HumanMessage, AIMessage, SystemMessage, ToolMessage automatically
+- **Conversation history**: Automatic accumulation and management of conversation flow
+- **LangChain integration**: Native compatibility with LangChain chat models and tools
+
+### Pattern-Specific Requirements
 - **Parallel Patterns**: Use `Annotated[List[T], operator.add]` for fields that accumulate results from parallel nodes
 - **Worker Patterns**: Include both source list field and processed results field
 - **Routing Patterns**: Ensure routing function has access to necessary decision-making data
 - **Human-in-the-Loop**: Consider fields for user inputs and confirmations
+- **Chat Patterns**: MessagesState provides built-in `messages` field with automatic message handling
+- **Multi-Agent Patterns**: Include agent identification, turn management, and conversation orchestration fields
+- **Tool Integration**: Include fields for tool results, pending tool calls, and external data
 - **Error Handling**: Include optional error fields if the graph might need error state management
 
 Analyze the graph thoroughly and provide a complete, working State class specification.

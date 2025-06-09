@@ -58,7 +58,30 @@
             min-height: 36px;
             display: flex;
             align-items: center;
+            justify-content: space-between;
             flex-shrink: 0;
+        }
+        
+        .graph-header-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .download-icon {
+            background: none;
+            border: none;
+            color: #666;
+            font-size: 16px;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 3px;
+            transition: all 0.2s;
+        }
+        
+        .download-icon:hover {
+            background-color: #2a2a2a;
+            color: #4caf50;
         }
         
         .graph-content-wrapper {
@@ -156,6 +179,9 @@
         .nav-column {
             border-left: 1px solid #2a2a2a;
             border-right: 1px solid #2a2a2a;
+            display: flex;
+            flex-direction: column;
+            padding: 0;
         }
         
         .nav-link {
@@ -559,7 +585,10 @@
         <!-- First column: Graph/File List -->
         <div class="column graph-column" id="graphColumn">
             <div class="graph-header" id="graphHeader" style="display: none;">
-                <span id="selectedFileName"></span>
+                <div class="graph-header-title">
+                    <button class="download-icon" id="downloadZip" title="Download all artifacts as ZIP">⬇</button>
+                    <span id="selectedFileName"></span>
+                </div>
             </div>
             <div class="graph-content-wrapper">
                 <div class="file-list" id="fileList">
@@ -585,7 +614,10 @@
         
         <!-- Second column: Navigation -->
         <div class="column nav-column">
-            <nav style="padding-top: 20px;">
+            <div class="graph-header">
+                <span>Graph Artifacts</span>
+            </div>
+            <nav style="padding: 20px;">
                 <a href="#" class="nav-link disabled" data-file="state_spec">state spec</a>
                 <a href="#" class="nav-link disabled" data-file="state_code">state code</a>
                 <a href="#" class="nav-link disabled" data-file="node_spec">node spec</a>
@@ -887,6 +919,10 @@
                 updateButtonStates(existingFiles);
                 
                 parseGraph(data.content);
+                
+                // Load and display the graph overview in the third column
+                await loadGraphOverview(filename);
+                
             } catch (error) {
                 console.error('Error loading graph:', error);
                 alert('Error loading graph file');
@@ -1512,6 +1548,52 @@
             });
         }
         
+        // Download zip file with all artifacts
+        function downloadZipFile() {
+            if (!currentLoadedFile) {
+                alert('No file loaded');
+                return;
+            }
+            
+            // Create a link element and trigger download
+            const downloadUrl = `/api/download-zip/${currentLoadedFile}`;
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.download = `${currentLoadedFile.replace('.txt', '')}_artifacts.zip`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+        
+        // Load and display graph overview
+        async function loadGraphOverview(filename) {
+            try {
+                const response = await fetch(`/api/graph-overview/${filename}`);
+                const data = await response.json();
+                
+                if (data.error) {
+                    console.error('Error loading graph overview:', data.error);
+                    return;
+                }
+                
+                // Update the third column with overview
+                const contentHeader = document.getElementById('contentHeader');
+                const contentBody = document.getElementById('contentBody');
+                
+                contentHeader.innerHTML = '<span>Graph Overview</span>';
+                contentHeader.className = 'content-header';
+                
+                // Display the overview markdown
+                contentBody.innerHTML = `<div class="markdown-content">${marked.parse(data.content)}</div>`;
+                
+                // Hide delete button since this is not a deletable artifact
+                hideDeleteButton();
+                
+            } catch (error) {
+                console.error('Error loading graph overview:', error);
+            }
+        }
+        
         // Handle navigation clicks
         document.querySelectorAll('.nav-link').forEach(link => {
             link.addEventListener('click', async (e) => {
@@ -1610,6 +1692,11 @@
             // Handle cancel button
             if (e.target && e.target.id === 'cancelEdit') {
                 exitEditMode(false);
+            }
+            
+            // Handle download zip button
+            if (e.target && e.target.id === 'downloadZip') {
+                downloadZipFile();
             }
         });
     </script>

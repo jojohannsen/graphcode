@@ -1,6 +1,6 @@
 from pathlib import Path
 import yaml
-from mk_utils import parse_graph, validate_graph, mk_agent, get_single_prompt, OpenRouterAgent, prepare_working_folder
+from mk_utils import parse_graph, validate_graph, mk_agent, get_single_prompt, OpenRouterAgent, prepare_working_folder, get_tools
 
 def generate_state_spec(graph_name, graph_spec):
     """Generate state specification from graph spec using LLM"""
@@ -38,19 +38,7 @@ def generate_state_spec(graph_name, graph_spec):
     
     # Get LLM configuration for spec generation
     print("Getting LLM configuration...", flush=True)
-    spec_config = config.get('spec', {})
-    agent_library = spec_config.get('agent_library', 'agno')
-    llm_provider = spec_config.get('llm_provider', 'anthropic')
-    llm_model = spec_config.get('llm_model', 'claude-3-sonnet-20240229')
-    print(f"LLM config: library={agent_library}, provider={llm_provider}, model={llm_model}", flush=True)
-    
-    # Fix common model name issues
-    if llm_model == 'gpt-4.1':
-        llm_model = 'gpt-4'
-        print(f"Fixed model name to: {llm_model}", flush=True)
-    elif llm_model == 'claude-3-7-sonnet-latest':
-        llm_model = 'claude-3-sonnet-20240229'
-        print(f"Fixed model name to: {llm_model}", flush=True)
+    agent_library, llm_provider, llm_model = get_tools(config, 'spec')
     
     # Get prompts from config
     print("Getting prompts from config...", flush=True)

@@ -1,7 +1,10 @@
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, send_file
 import os
 from pathlib import Path
 import glob
+import zipfile
+import io
+import datetime
 from gen_state_spec import generate_state_spec
 from gen_state_code import generate_state_code
 from gen_node_spec import generate_node_spec
@@ -559,6 +562,113 @@ def save_file(file_path):
         return jsonify({'success': True, 'message': 'File saved successfully'}), 200
     except Exception as e:
         print(f"Error saving file {file_path}: {e}", flush=True)
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/download-zip/<filename>')
+def download_zip(filename):
+    """Create and download a zip file containing all artifacts and graph specification"""
+    try:
+        # Extract graph name (filename without .txt)
+        graph_name = filename.replace('.txt', '')
+        
+        # Create zip file in memory
+        zip_buffer = io.BytesIO()
+        
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            # Add the original graph specification file
+            graph_file_path = BASE_DIR / filename
+            if graph_file_path.exists():
+                zip_file.write(graph_file_path, f"{graph_name}/{filename}")
+            
+            # Define all possible artifact files
+            artifact_files = [
+                ('state-spec.md', f"{graph_name}/state-spec.md"),
+                ('state_code.py', f"{graph_name}/state_code.py"),
+                ('node-spec.md', f"{graph_name}/node-spec.md"),
+                ('node_code.py', f"{graph_name}/node_code.py"),
+                ('graph_code.py', f"{graph_name}/graph_code.py"),
+                ('main.py', f"{graph_name}/main.py"),
+                ('lgcodegen_llm.py', f"{graph_name}/lgcodegen_llm.py"),
+                (f"{graph_name}.yaml", f"{graph_name}/{graph_name}.yaml"),
+                ('human_input.py', f"{graph_name}/human_input.py"),
+                ('llm_cache.py', f"{graph_name}/llm_cache.py")
+            ]
+            
+            # Add existing artifact files to the zip
+            for filename_in_zip, file_path in artifact_files:
+                full_path = BASE_DIR / file_path
+                if full_path.exists():
+                    zip_file.write(full_path, f"{graph_name}/{filename_in_zip}")
+        
+        zip_buffer.seek(0)
+        
+        # Send the zip file as download
+        return send_file(
+            zip_buffer,
+            as_attachment=True,
+            download_name=f"{graph_name}_artifacts.zip",
+            mimetype='application/zip'
+        )
+        
+    except Exception as e:
+        print(f"Error creating zip file: {e}", flush=True)
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/graph-overview/<filename>')
+def get_graph_overview(filename):
+    """Get the graph overview with current artifact status"""
+    try:
+        # Extract graph name (filename without .txt)
+        graph_name = filename.replace('.txt', '')
+        
+        # Read the overview template
+        overview_template_path = BASE_DIR / 'templates' / 'graph_overview.md'
+        if not overview_template_path.exists():
+            return jsonify({'error': 'Overview template not found'}), 404
+        
+        with open(overview_template_path, 'r', encoding='utf-8') as f:
+            overview_content = f.read()
+        
+        # Define artifact file mappings
+        artifacts = [
+            ('state_spec', f"{graph_name}/state-spec.md", "Generate"),
+            ('state_code', f"{graph_name}/state_code.py", "Generate"),
+            ('node_spec', f"{graph_name}/node-spec.md", "Generate"),
+            ('node_code', f"{graph_name}/node_code.py", "Generate"),
+            ('graph_code', f"{graph_name}/graph_code.py", "Generate"),
+            ('main', f"{graph_name}/main.py", "Generate")
+        ]
+        
+        # Define navigation button names for instructions
+        nav_button_names = {
+            'state_spec': 'state spec',
+            'state_code': 'state code', 
+            'node_spec': 'node spec',
+            'node_code': 'node code',
+            'graph_code': 'graph code',
+            'main': 'main'
+        }
+        
+        # Check status of each artifact
+        status_data = {}
+        for key, file_path, action in artifacts:
+            full_path = BASE_DIR / file_path
+            if full_path.exists():
+                # Get file modification time
+                mod_time = datetime.datetime.fromtimestamp(full_path.stat().st_mtime)
+                status_data[f"{key}_status"] = f"Generated {mod_time.strftime('%Y-%m-%d %H:%M')}"
+            else:
+                button_name = nav_button_names[key]
+                status_data[f"{key}_status"] = f"Click '{button_name}' to generate"
+        
+        # Replace placeholders in the overview content
+        for key, value in status_data.items():
+            overview_content = overview_content.replace(f"{{{key}}}", value)
+        
+        return jsonify({'content': overview_content}), 200
+        
+    except Exception as e:
+        print(f"Error generating graph overview: {e}", flush=True)
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
