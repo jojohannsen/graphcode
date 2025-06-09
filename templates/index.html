@@ -185,7 +185,9 @@
         }
         
         .nav-link {
-            display: block;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
             padding: 12px 16px;
             margin: 4px 0;
             text-decoration: none;
@@ -195,6 +197,17 @@
             transition: all 0.3s ease;
             font-size: 14px;
             cursor: pointer;
+        }
+        
+        .nav-link-checkmark {
+            color: #4caf50;
+            font-size: 16px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .nav-link-checkmark.visible {
+            opacity: 1;
         }
         
         .nav-link:hover:not(.disabled) {
@@ -586,7 +599,6 @@
         <div class="column graph-column" id="graphColumn">
             <div class="graph-header" id="graphHeader" style="display: none;">
                 <div class="graph-header-title">
-                    <button class="download-icon" id="downloadZip" title="Download all artifacts as ZIP">⬇</button>
                     <span id="selectedFileName"></span>
                 </div>
             </div>
@@ -615,22 +627,45 @@
         <!-- Second column: Navigation -->
         <div class="column nav-column">
             <div class="graph-header">
-                <span>Graph Artifacts</span>
+                <div class="graph-header-title">
+                    <span>Graph Artifacts</span>
+                    <button class="download-icon" id="downloadZip" title="Download ZIP">⬇</button>
+                </div>
             </div>
             <nav style="padding: 20px;">
-                <a href="#" class="nav-link disabled" data-file="state_spec">state spec</a>
-                <a href="#" class="nav-link disabled" data-file="state_code">state code</a>
-                <a href="#" class="nav-link disabled" data-file="node_spec">node spec</a>
-                <a href="#" class="nav-link disabled" data-file="node_code">node code</a>
-                <a href="#" class="nav-link disabled" data-file="graph_code">graph code</a>
-                <a href="#" class="nav-link disabled" data-file="main">main</a>
+                <a href="#" class="nav-link disabled" data-file="state_spec">
+                    <span>state spec</span>
+                    <span class="nav-link-checkmark" id="checkmark-state_spec">✓</span>
+                </a>
+                <a href="#" class="nav-link disabled" data-file="state_code">
+                    <span>state code</span>
+                    <span class="nav-link-checkmark" id="checkmark-state_code">✓</span>
+                </a>
+                <a href="#" class="nav-link disabled" data-file="node_spec">
+                    <span>node spec</span>
+                    <span class="nav-link-checkmark" id="checkmark-node_spec">✓</span>
+                </a>
+                <a href="#" class="nav-link disabled" data-file="node_code">
+                    <span>node code</span>
+                    <span class="nav-link-checkmark" id="checkmark-node_code">✓</span>
+                </a>
+                <a href="#" class="nav-link disabled" data-file="graph_code">
+                    <span>graph code</span>
+                    <span class="nav-link-checkmark" id="checkmark-graph_code">✓</span>
+                </a>
+                <a href="#" class="nav-link disabled" data-file="main">
+                    <span>main</span>
+                    <span class="nav-link-checkmark" id="checkmark-main">✓</span>
+                </a>
             </nav>
         </div>
         
         <!-- Third column: Content Display -->
         <div class="column content-column">
-            <div class="content-header welcome-style" id="contentHeader">
-                <span>Welcome</span>
+            <div class="graph-header" id="contentHeader">
+                <div class="graph-header-title">
+                    <span>Welcome</span>
+                </div>
                 <button class="delete-button" id="deleteButton" title="Delete this file">🗑️</button>
             </div>
             <div class="content-body-wrapper">
@@ -844,6 +879,28 @@
             return existingFiles;
         }
         
+        // Update checkmark visibility based on file existence
+        function updateCheckmarks(existingFiles) {
+            const checkmarks = {
+                state_spec: document.getElementById('checkmark-state_spec'),
+                state_code: document.getElementById('checkmark-state_code'),
+                node_spec: document.getElementById('checkmark-node_spec'),
+                node_code: document.getElementById('checkmark-node_code'),
+                graph_code: document.getElementById('checkmark-graph_code'),
+                main: document.getElementById('checkmark-main')
+            };
+            
+            // Update checkmark visibility for each artifact
+            Object.keys(checkmarks).forEach(key => {
+                const checkmark = checkmarks[key];
+                if (existingFiles[key]) {
+                    checkmark.classList.add('visible');
+                } else {
+                    checkmark.classList.remove('visible');
+                }
+            });
+        }
+        
         // Update button states based on file dependencies
         function updateButtonStates(existingFiles) {
             const buttons = {
@@ -888,6 +945,9 @@
             if (!buttons.graph_code.classList.contains('disabled') && existingFiles.graph_code) {
                 buttons.main.classList.remove('disabled');
             }
+            
+            // Update checkmarks
+            updateCheckmarks(existingFiles);
         }
         
         // Load graph from specific file
@@ -938,16 +998,21 @@
             // Clear current file
             currentLoadedFile = null;
             
-            // Disable all navigation links
+            // Disable all navigation links and hide checkmarks
             document.querySelectorAll('.nav-link').forEach(link => {
                 link.classList.add('disabled');
                 link.classList.remove('active');
             });
             
+            // Hide all checkmarks
+            document.querySelectorAll('.nav-link-checkmark').forEach(checkmark => {
+                checkmark.classList.remove('visible');
+            });
+            
             // Reset content area with welcome style
             const contentHeader = document.getElementById('contentHeader');
-            contentHeader.innerHTML = '<span>Welcome</span><button class="delete-button" id="deleteButton" title="Delete this file">🗑️</button>';
-            contentHeader.className = 'content-header welcome-style';
+            contentHeader.innerHTML = '<div class="graph-header-title"><span>Welcome</span></div><button class="delete-button" id="deleteButton" title="Delete this file">🗑️</button>';
+            contentHeader.className = 'graph-header';
             document.getElementById('contentBody').innerHTML = '<p>Select a file from the navigation menu to view its contents.</p>';
             hideDeleteButton();
         }
@@ -1580,8 +1645,8 @@
                 const contentHeader = document.getElementById('contentHeader');
                 const contentBody = document.getElementById('contentBody');
                 
-                contentHeader.innerHTML = '<span>Graph Overview</span>';
-                contentHeader.className = 'content-header';
+                contentHeader.innerHTML = '<div class="graph-header-title"><span>Graph Overview</span></div>';
+                contentHeader.className = 'graph-header';
                 
                 // Display the overview markdown
                 contentBody.innerHTML = `<div class="markdown-content">${marked.parse(data.content)}</div>`;
@@ -1613,8 +1678,8 @@
                 
                 // Update header with file-loaded style
                 const contentHeader = document.getElementById('contentHeader');
-                contentHeader.innerHTML = `<span>${fileName}</span><button class="delete-button" id="deleteButton" title="Delete this file">🗑️</button>`;
-                contentHeader.className = 'content-header';
+                contentHeader.innerHTML = `<div class="graph-header-title"><span>${fileName}</span></div><button class="delete-button" id="deleteButton" title="Delete this file">🗑️</button>`;
+                contentHeader.className = 'graph-header';
                 
                 // Special handling for files that can be generated
                 if (currentLoadedFile) {
