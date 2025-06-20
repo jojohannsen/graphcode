@@ -1,24 +1,16 @@
 from pathlib import Path
 import yaml
-from mk_utils import mk_agent, get_single_prompt, OpenRouterAgent, extract_python_code, get_config, prepare_working_folder
+from mk_utils import mk_agent, get_single_prompt, OpenRouterAgent, extract_python_code, setup_project
 
 def generate_node_code(graph_name, graph_spec):
     """Generate node code from graph spec, state spec, state code, and node spec using LLM"""
     print(f"generate_node_code called with graph_name='{graph_name}'", flush=True)
     
-    # Prepare working folder and get config
-    print("Preparing working folder and getting config...", flush=True)
-    try:
-        prepare_working_folder(graph_name)
-        config = get_config(graph_name)
-        print("Working folder prepared and config loaded", flush=True)
-    except Exception as e:
-        print(f"ERROR preparing working folder: {e}", flush=True)
-        raise
-    
+    config, base_dir = setup_project(graph_name)
+
     # Check if state-spec.md exists
     print("Checking if state-spec.md exists...", flush=True)
-    state_spec_file = Path(graph_name) / "state-spec.md"
+    state_spec_file = base_dir / "state-spec.md"
     if not state_spec_file.exists():
         print("ERROR: state-spec.md does not exist", flush=True)
         raise ValueError("state-spec.md does not exist. Generate state spec first.")
@@ -35,7 +27,7 @@ def generate_node_code(graph_name, graph_spec):
     
     # Check if state_code.py exists
     print("Checking if state_code.py exists...", flush=True)
-    state_code_file = Path(graph_name) / "state_code.py"
+    state_code_file = base_dir / "state_code.py"
     if not state_code_file.exists():
         print("ERROR: state_code.py does not exist", flush=True)
         raise ValueError("state_code.py does not exist. Generate state code first.")
@@ -52,7 +44,7 @@ def generate_node_code(graph_name, graph_spec):
     
     # Check if node-spec.md exists
     print("Checking if node-spec.md exists...", flush=True)
-    node_spec_file = Path(graph_name) / "node-spec.md"
+    node_spec_file = base_dir / "node-spec.md"
     if not node_spec_file.exists():
         print("ERROR: node-spec.md does not exist", flush=True)
         raise ValueError("node-spec.md does not exist. Generate node spec first.")
@@ -131,7 +123,7 @@ def generate_node_code(graph_name, graph_spec):
     # Extract content based on agent type
     print("Extracting content based on agent type...", flush=True)
     try:
-        node_code_file = Path(graph_name) / "node_code.py"
+        node_code_file = base_dir / "node_code.py"
         
         if isinstance(agent, OpenRouterAgent):
             print("Processing OpenRouterAgent result", flush=True)

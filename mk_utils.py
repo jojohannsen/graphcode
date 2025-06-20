@@ -20,10 +20,11 @@ def get_tools(config, category):
     agent_library = config[category]['agent_library']
     llm_provider = config[category]['llm_provider']
     llm_model = config[category]['llm_model']
-    # one sentence summary of tools we use (the above 3 variables) for writing specifications
-    tools_summary = f"  {llm_provider}, {llm_model} using {agent_library} with tools to write file."
+    cache_type = config[category].get('cache_type', 'file')  # Default to 'file' if not specified
+    # one sentence summary of tools we use (the above 4 variables) for writing specifications
+    tools_summary = f"  {llm_provider}, {llm_model} using {agent_library} with {cache_type} cache and tools to write file."
     print(f"{Fore.GREEN}Tools: {Fore.BLUE}{tools_summary}{Style.RESET_ALL}")
-    return agent_library, llm_provider, llm_model
+    return agent_library, llm_provider, llm_model, cache_type
 
 def get_prompt(prompt_name, template_only=False):
     client = Client()
@@ -82,10 +83,12 @@ def get_single_prompt(config, prompt_type):
     config_key, template_only = prompt_mapping[prompt_type]
     return get_prompt(config['prompts'][config_key], template_only=template_only)
 
-def get_file(graph_name, area, file_type):
+def get_file(base_folder, graph_name, area, file_type):
+    config = get_config(base_folder, graph_name)
+    base_dir = Path(base_folder) / graph_name
     extension = "md" if file_type == "spec" else "py"
     delimiter = "-" if file_type == "spec" else "_"
-    file_path = Path(graph_name) / f"{area}{delimiter}{file_type}.{extension}"
+    file_path = base_dir / f"{area}{delimiter}{file_type}.{extension}"
     if not file_path.exists():
         print(f"{Fore.RED}Error: {area}{delimiter}{file_type}.{extension} does not exist{Style.RESET_ALL}")
         sys.exit(1)
@@ -120,53 +123,99 @@ def prepare_working_folder(graph_name):
         >>> print(config['node_llm_provider'])
         'openai'
     """
+    base_folder = get_base_folder()
+    print(f"BASE_FOLDER: {base_folder}", flush=True)
+    base_dir = Path(base_folder) / graph_name
+    print(f"BASE_DIR: {base_dir}", flush=True)
     # create the working_dir if it does not exist
-    Path(graph_name).mkdir(parents=True, exist_ok=True)
-    config = get_config(graph_name)
+    base_dir.mkdir(parents=True, exist_ok=True)
+    config = get_config(base_folder, graph_name)
+    print(f"CONFIG: {config}", flush=True)
     node_config = config['node']
     node_agent_provider = node_config['agent_library']
     node_llm_provider = node_config['llm_provider']
     node_llm_model = node_config['llm_model']
+    node_cache_type = node_config.get('cache_type', 'file')  # Default to 'file' if not specified
     print(f"{Fore.CYAN}Node Agent Provider: {Fore.BLUE}{node_agent_provider}{Style.RESET_ALL}")
     print(f"{Fore.CYAN}Node LLM Provider: {Fore.BLUE}{node_llm_provider}{Style.RESET_ALL}")
     print(f"{Fore.CYAN}Node LLM Model: {Fore.BLUE}{node_llm_model}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}Node Cache Type: {Fore.BLUE}{node_cache_type}{Style.RESET_ALL}")
 
-    # Get the LLM code template from langsmith hub
+    # Get the LLM code template from langsmith hub, fallback to local template
     llm_code_template = get_prompt("hub:johannes/lgcodegen-node-llm-code", template_only=True)
+    if not llm_code_template:
+        # Fallback to local template
+        print(f"{Fore.YELLOW}Could not fetch from hub, using local template{Style.RESET_ALL}")
+        local_template_path = Path("templates/lgcodegen_llm_template.py")
+        if local_template_path.exists():
+            with open(local_template_path, "r") as f:
+                llm_code_template = f.read()
+        else:
+            print(f"{Fore.RED}Error: Could not find local LLM template{Style.RESET_ALL}")
+            sys.exit(1)
+    
     if llm_code_template:
         # Format the template with the LLM configuration
         formatted_code = llm_code_template.format(
             llm_provider=node_llm_provider,
-            llm_model=node_llm_model
+            llm_model=node_llm_model,
+            cache_type=node_cache_type
         )
         # Write the formatted code to lgcodegen_llm.py
-        llm_code_file = Path(graph_name) / "lgcodegen_llm.py"
+        llm_code_file = base_dir / "lgcodegen_llm.py"
         print(f"{Fore.CYAN}Writing LLM code to: {Fore.BLUE}{llm_code_file}{Style.RESET_ALL}")
         with open(llm_code_file, "w") as f:
             f.write(formatted_code)
     else:
-        print(f"{Fore.RED}Error: Could not fetch LLM code template from langsmith hub{Style.RESET_ALL}")
+        print(f"{Fore.RED}Error: Could not get LLM code template{Style.RESET_ALL}")
         sys.exit(1)
 
     return config
 
-def get_config(graph_name):
+def get_base_folder():
+    default_config = Path("default.yaml")
+    base_folder = None
+    with open(default_config, "r") as f:
+        default_config_yaml = yaml.safe_load(f)
+        base_folder = default_config_yaml['base_folder']
+    return base_folder
+
+def setup_project(graph_name):
+    """Prepares working folder and gets config."""
+    print("setup_project: Preparing working folder and getting config...", flush=True)
+    base_folder = get_base_folder()
+    print(f"BASE_FOLDER: {base_folder}", flush=True)
+    if not base_folder:
+        print(f"{Fore.RED}Error: base_folder is not set in default.yaml{Style.RESET_ALL}")
+        sys.exit(1)
+    print(f"BASE_FOLDER: {base_folder}", flush=True)
+    try:
+        config = prepare_working_folder(graph_name)
+        base_dir = get_base_dir(base_folder, graph_name)
+        return config, base_dir
+    except Exception as e:
+        print(f"ERROR setting up project: {e}", flush=True)
+        raise
+
+def get_config(base_folder, graph_name):
+    print(f"get_config: Getting config for {graph_name} in {base_folder}", flush=True)
+    default_config = Path("default.yaml")
+    with open(default_config, "r") as f:
+        default_config_yaml = yaml.safe_load(f)
+        base_folder = default_config_yaml['base_folder']
     # we look for yaml file first in {graph_name}/{graph_name}.yaml
     # if not found, we look for {graph_name}.yaml in the current directory, and copy it to {graph_name}/{graph_name}.yaml
-    path_to_yaml = Path(graph_name) / f"{graph_name}.yaml"
+    path_to_yaml = Path(f"{base_folder}/{graph_name}/{graph_name}.yaml")
+    print(f"PATH_TO_YAML: {path_to_yaml}", flush=True)
     if not path_to_yaml.exists():
-        path_to_yaml = Path(f"{graph_name}.yaml")
-        if not path_to_yaml.exists():
-            path_to_yaml = Path(graph_name) / f"{graph_name}.yaml"
-            print(f"{Fore.CYAN}Creating: {Fore.BLUE}{path_to_yaml}{Style.RESET_ALL}")
-            # copy default.yaml file to this path
-            default_config = Path("default.yaml")
-            if not default_config.exists():
-                print(f"{Fore.RED}Error: default.yaml does not exist{Style.RESET_ALL}")
-                sys.exit(1)
-            # read default.yaml file
-            with open(default_config, "r") as f:
-                default_config_content = f.read()
+        print(f"{Fore.CYAN}Creating: {Fore.BLUE}{path_to_yaml}{Style.RESET_ALL}")
+        # copy default.yaml file to this path
+        if not default_config.exists():
+            print(f"{Fore.RED}Error: default.yaml does not exist{Style.RESET_ALL}")
+            sys.exit(1)
+        # read default.yaml file
+        with open(default_config, "r") as f:
+            default_config_content = f.read()
             with open(path_to_yaml, "w") as f:
                 f.write(default_config_content)
     print(f"{Fore.CYAN}Reading: {Fore.BLUE}{path_to_yaml}{Style.RESET_ALL}")
@@ -185,6 +234,13 @@ def get_config(graph_name):
             config['prompts']['node_code_prompt'] = "hub:johannes/lgcodegen-gen_node_code"
             config['prompts']['graph_spec_prompt'] = "hub:johannes/lgcodegen-gen_graph_spec"
             config['prompts']['graph_code_prompt'] = "hub:johannes/lgcodegen-gen_graph_code"
+    # Expand and resolve base_folder
+    base_folder = config.get('base_folder', '.')
+    base_folder = os.path.expanduser(base_folder)
+    base_folder = str(Path(base_folder).resolve())
+    config['base_folder'] = base_folder
+    # print base folder
+    print(f"BASE_FOLDER: {base_folder}", flush=True)
     return config
 
 def read_file_and_get_subdir(file_path):
@@ -237,54 +293,62 @@ class OpenRouterAgent:
         )
 
 
+
 def extract_python_code(text):
     """
-    Extract Python code from text that contains code blocks.
-    
+    Extracts Python code from a text string.
+
     Args:
-        text (str): Text containing Python code blocks marked with ```python and ```
-        
+        text (str): The text string to extract Python code from.
+
     Returns:
-        str: The extracted Python code without the markdown formatting
+        str: The extracted Python code, or an empty string if no code is found.
     """
-    # Pattern to match Python code blocks
-    pattern = r"```python\n(.*?)```"
-    
-    # Find all matches using regex with DOTALL flag to match across newlines
-    matches = re.findall(pattern, text, re.DOTALL)
-    
-    # Return the first match if found, otherwise empty string
-    return matches[0] if matches else ""
+    # Regex to find code block ```python ... ```
+    match = re.search(r"```python\n(.*?)\n```", text, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    return text.strip()
 
 
 
-def mk_agent(working_dir, llm_provider, llm_model, agent_library, system_prompt=None):
-    print(f"  {Fore.CYAN}LLM Provider: {Fore.BLUE}{llm_provider}{Style.RESET_ALL}")
-    print(f"  {Fore.CYAN}LLM Model: {Fore.BLUE}{llm_model}{Style.RESET_ALL}")
-    print(f"  {Fore.CYAN}Agent Library: {Fore.BLUE}{agent_library}{Style.RESET_ALL}")
-    system_prompt = system_prompt.replace("{", "{{").replace("}", "}}") if system_prompt else None
-    
-    print(f"{Fore.CYAN}Writing files with Agno Agent + FileTools{Style.RESET_ALL}")
-    if llm_provider == "anthropic":
-        agent = Agent(model=Claude(id=llm_model), tools=[FileTools(Path(working_dir))])
-    elif llm_provider == "openai":
-        agent = Agent(
-            model=OpenAIChat(id=llm_model),
-            tools=[FileTools(Path(working_dir))],
-            instructions=[system_prompt]
-        )
-    elif llm_provider == "google":
-        agent = Agent(
-                model=Gemini(id=llm_model),
-                tools=[FileTools(Path(working_dir))],
-                instructions=[system_prompt]
-        )
-    elif llm_provider == 'openrouter':
-        print(f"{Fore.CYAN}Using OpenRouter for file management{Style.RESET_ALL}")
-        agent = OpenRouterAgent(llm_model, os.getenv('OPENROUTER_API_KEY'))
+def mk_agent(base_folder, graph_name, llm_provider, llm_model, agent_library, system_prompt=""):
+    """
+    Creates an agent with the specified configuration.
+
+    Args:
+        base_folder (str): The base folder for the agent.
+        graph_name (str): The name of the graph.
+        llm_provider (str): The LLM provider to use (e.g., 'openai', 'anthropic').
+        llm_model (str): The specific LLM model to use.
+        agent_library (str): The agent library to use (e.g., 'agno', 'langchain').
+        system_prompt (str, optional): The system prompt for the agent. Defaults to "".
+
+    Returns:
+        object: An agent instance.
+    """
+    working_dir = Path(base_folder) / graph_name
+    print(f"mk_agent: Creating agent with working_dir={working_dir}, agent_library={agent_library}, llm_provider={llm_provider}, llm_model={llm_model}, system_prompt={system_prompt}", flush=True)
+    if agent_library == "langchain":
+        return ChatOpenAI(model=llm_model, temperature=0, openai_api_base=os.environ.get("OPENAI_API_BASE", "https://api.openai.com/v1"))
+    elif agent_library == "openrouter":
+        return OpenRouterAgent(model_name=llm_model, api_key=os.environ["OPENROUTER_API_KEY"], instructions=system_prompt)
     else:
-        raise ValueError(f"Unsupported LLM provider: {llm_provider}")
-    return agent
+        # Default to agno
+        if llm_provider == "openai":
+            model = OpenAIChat(model=llm_model)
+        elif llm_provider == "anthropic":
+            model = Claude(id=llm_model)
+        elif llm_provider == "google":
+            model = Gemini(model=llm_model)
+        else:
+            raise ValueError(f"Unsupported LLM provider: {llm_provider}")
+        
+        return Agent(
+            model=model,
+            tools=[FileTools(base_dir=working_dir)],
+            instructions=system_prompt
+        )
 
 
 
@@ -702,4 +766,8 @@ class FileOverwriteManager:
         if not self.file_path.exists():
             print(f"{Fore.RED}Error: {self.file_description} was not created at {self.file_path}{Style.RESET_ALL}")
             sys.exit(1)
+
+def get_base_dir(base_folder, graph_name):
+    """Return the base directory for a graph, using config['base_folder'] and graph_name."""
+    return Path(base_folder) / graph_name
 

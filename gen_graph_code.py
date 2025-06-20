@@ -1,23 +1,16 @@
 from pathlib import Path
 import yaml
-from mk_utils import mk_agent, get_single_prompt, OpenRouterAgent, extract_python_code, get_config, get_file
+from mk_utils import mk_agent, get_single_prompt, OpenRouterAgent, extract_python_code, get_file, setup_project
 
 def generate_graph_code(graph_name, graph_spec):
     """Generate graph code from graph spec and all dependencies using LLM"""
     print(f"generate_graph_code called with graph_name='{graph_name}'", flush=True)
     
-    # Get config
-    print("Getting config...", flush=True)
-    try:
-        config = get_config(graph_name)
-        print("Config loaded successfully", flush=True)
-    except Exception as e:
-        print(f"ERROR getting config: {e}", flush=True)
-        raise
-    
+    config, base_dir = setup_project(graph_name)
+    base_folder = config['base_folder']
     # Check if state-spec.md exists
     print("Checking if state-spec.md exists...", flush=True)
-    state_spec_file = Path(graph_name) / "state-spec.md"
+    state_spec_file = base_dir / "state-spec.md"
     if not state_spec_file.exists():
         print("ERROR: state-spec.md does not exist", flush=True)
         raise ValueError("state-spec.md does not exist. Generate state spec first.")
@@ -25,13 +18,13 @@ def generate_graph_code(graph_name, graph_spec):
     # Read required files using get_file utility (like mk_graph_code.py)
     print("Reading required files...", flush=True)
     try:
-        state_spec = get_file(graph_name, "state", "spec")
+        state_spec = get_file(base_folder, graph_name, "state", "spec")
         print(f"Successfully read state spec ({len(state_spec)} characters)", flush=True)
         
-        state_code = get_file(graph_name, "state", "code")
+        state_code = get_file(base_folder, graph_name, "state", "code")
         print(f"Successfully read state code ({len(state_code)} characters)", flush=True)
         
-        node_spec = get_file(graph_name, "node", "spec")
+        node_spec = get_file(base_folder, graph_name, "node", "spec")
         print(f"Successfully read node spec ({len(node_spec)} characters)", flush=True)
         
     except Exception as e:
@@ -77,7 +70,7 @@ def generate_graph_code(graph_name, graph_spec):
     # Create agent (using system_prompt like mk_graph_code.py)
     print("Creating agent...", flush=True)
     try:
-        agent = mk_agent(graph_name, llm_provider, llm_model, agent_library, system_prompt=prompt)
+        agent = mk_agent(base_folder,graph_name, llm_provider, llm_model, agent_library, system_prompt=prompt)
         print(f"Agent created successfully: {type(agent)}", flush=True)
     except Exception as e:
         print(f"ERROR creating agent: {e}", flush=True)
@@ -95,7 +88,7 @@ def generate_graph_code(graph_name, graph_spec):
     # Extract content based on agent type
     print("Extracting content based on agent type...", flush=True)
     try:
-        graph_code_file = Path(graph_name) / "graph_code.py"
+        graph_code_file = base_dir / "graph_code.py"
         
         if isinstance(agent, OpenRouterAgent):
             print("Processing OpenRouterAgent result", flush=True)

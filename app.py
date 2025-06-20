@@ -215,6 +215,7 @@ if __name__ == "__main__":
 def generate_state_spec_endpoint():
     """Generate state specification from graph file"""
     print("=== Starting state spec generation endpoint ===", flush=True)
+
     try:
         data = request.json
         filename = data.get('filename')

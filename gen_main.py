@@ -1,30 +1,23 @@
 from pathlib import Path
 import yaml
-from mk_utils import mk_agent, get_single_prompt, OpenRouterAgent, extract_python_code, get_config, get_file
+from mk_utils import mk_agent, get_single_prompt, OpenRouterAgent, extract_python_code, get_file, setup_project
 
 def generate_main(graph_name, graph_spec):
     """Generate main code from graph spec and all dependencies using LLM"""
     print(f"generate_main called with graph_name='{graph_name}'", flush=True)
     
-    # Get config
-    print("Getting config...", flush=True)
-    try:
-        config = get_config(graph_name)
-        print("Config loaded successfully", flush=True)
-    except Exception as e:
-        print(f"ERROR getting config: {e}", flush=True)
-        raise
-    
+    config, base_dir = setup_project(graph_name)
+    base_folder = config['base_folder']
     # Check if state-spec.md exists
     print("Checking if state-spec.md exists...", flush=True)
-    state_spec_file = Path(graph_name) / "state-spec.md"
+    state_spec_file = base_dir / "state-spec.md"
     if not state_spec_file.exists():
         print("ERROR: state-spec.md does not exist", flush=True)
         raise ValueError("state-spec.md does not exist. Generate state spec first.")
     
     # Check if graph_code.py exists
     print("Checking if graph_code.py exists...", flush=True)
-    graph_code_file = Path(graph_name) / "graph_code.py"
+    graph_code_file = base_dir / "graph_code.py"
     if not graph_code_file.exists():
         print("ERROR: graph_code.py does not exist", flush=True)
         raise ValueError("graph_code.py does not exist. Generate graph code first.")
@@ -32,16 +25,16 @@ def generate_main(graph_name, graph_spec):
     # Read required files using get_file utility (like mk_main.py)
     print("Reading required files...", flush=True)
     try:
-        state_spec = get_file(graph_name, "state", "spec")
+        state_spec = get_file(base_folder, graph_name, "state", "spec")
         print(f"Successfully read state spec ({len(state_spec)} characters)", flush=True)
         
-        state_code = get_file(graph_name, "state", "code")
+        state_code = get_file(base_folder, graph_name, "state", "code")
         print(f"Successfully read state code ({len(state_code)} characters)", flush=True)
         
-        node_spec = get_file(graph_name, "node", "spec")
+        node_spec = get_file(base_folder, graph_name, "node", "spec")
         print(f"Successfully read node spec ({len(node_spec)} characters)", flush=True)
         
-        graph_code = get_file(graph_name, "graph", "code")
+        graph_code = get_file(base_folder, graph_name, "graph", "code")
         print(f"Successfully read graph code ({len(graph_code)} characters)", flush=True)
         
     except Exception as e:
@@ -106,7 +99,7 @@ def generate_main(graph_name, graph_spec):
     # Extract content based on agent type
     print("Extracting content based on agent type...", flush=True)
     try:
-        main_code_file = Path(graph_name) / "main.py"
+        main_code_file = base_dir / "main.py"
         
         if isinstance(agent, OpenRouterAgent):
             print("Processing OpenRouterAgent result", flush=True)

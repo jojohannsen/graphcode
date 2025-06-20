@@ -591,12 +591,70 @@
         #graphContent.edit-mode {
             display: none;
         }
+        
+        /* Create new graph button styles */
+        .create-graph-button {
+            background: none;
+            border: none;
+            color: #666;
+            font-size: 12px;
+            cursor: pointer;
+            padding: 6px 12px;
+            border-radius: 4px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .create-graph-button:hover {
+            background-color: #2a2a2a;
+            color: #4caf50;
+        }
+        
+        /* Create graph modal styles */
+        .graph-name-input {
+            width: 100%;
+            padding: 12px;
+            margin: 12px 0 8px 0;
+            background-color: #1a1a1a;
+            border: 2px solid #3a3d4e;
+            border-radius: 6px;
+            color: #e0e0e0;
+            font-size: 14px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            outline: none;
+            transition: border-color 0.2s ease;
+        }
+        
+        .graph-name-input:focus {
+            border-color: #569cd6;
+        }
+        
+        .graph-name-input::placeholder {
+            color: #666;
+        }
+        
+        .input-help {
+            font-size: 12px;
+            color: #888;
+            margin: 0 0 8px 0;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <!-- First column: Graph/File List -->
         <div class="column graph-column" id="graphColumn">
+            <div class="graph-header" id="graphsListHeader">
+                <div class="graph-header-title">
+                    <span>Graphs</span>
+                </div>
+                <button class="create-graph-button" id="createGraphButton" title="Create a new graph file">
+                    <span>➕</span>
+                    <span>+ Create New Graph</span>
+                </button>
+            </div>
             <div class="graph-header" id="graphHeader" style="display: none;">
                 <div class="graph-header-title">
                     <span id="selectedFileName"></span>
@@ -633,6 +691,10 @@
                 </div>
             </div>
             <nav style="padding: 20px;">
+                <a href="#" class="nav-link active" data-file="readme">
+                    <span>README</span>
+                    <span class="nav-link-checkmark" id="checkmark-readme">📖</span>
+                </a>
                 <a href="#" class="nav-link disabled" data-file="state_spec">
                     <span>state spec</span>
                     <span class="nav-link-checkmark" id="checkmark-state_spec">✓</span>
@@ -718,6 +780,29 @@
             <div class="modal-footer">
                 <button class="modal-button modal-button-cancel" id="saveModalCancel">Cancel</button>
                 <button class="modal-button modal-button-delete" id="saveModalConfirm">Save</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Create New Graph Modal -->
+    <div class="modal-overlay" id="createGraphModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title">
+                    <span class="modal-icon">📊</span>
+                    Create New Graph
+                </h3>
+            </div>
+            <div class="modal-body">
+                <p class="modal-message">
+                    Enter a name for your new graph:
+                </p>
+                <input type="text" id="graphNameInput" class="graph-name-input" placeholder="Graph name (e.g., my_workflow)" autocomplete="off">
+                <p class="input-help">Name can only contain letters, numbers, underscores, and hyphens</p>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-button modal-button-cancel" id="createGraphCancel">Cancel</button>
+                <button class="modal-button modal-button-delete" id="createGraphConfirm">Create</button>
             </div>
         </div>
     </div>
@@ -829,13 +914,15 @@
                 const data = await response.json();
                 const fileList = document.getElementById('fileList');
                 
+                fileList.innerHTML = '';
+                
                 if (data.files.length === 0) {
                     fileList.innerHTML = '<div style="color: #666; text-align: center; padding: 20px;">No .txt files found in the current directory</div>';
                     return;
                 }
                 
-                fileList.innerHTML = '';
-                data.files.forEach(filename => {
+                // Sort files alphabetically before displaying
+                data.files.sort().forEach(filename => {
                     const fileItem = document.createElement('div');
                     fileItem.className = 'file-item';
                     fileItem.textContent = filename;
@@ -904,6 +991,7 @@
         // Update button states based on file dependencies
         function updateButtonStates(existingFiles) {
             const buttons = {
+                readme: document.querySelector('[data-file="readme"]'),
                 state_spec: document.querySelector('[data-file="state_spec"]'),
                 state_code: document.querySelector('[data-file="state_code"]'),
                 node_spec: document.querySelector('[data-file="node_spec"]'),
@@ -917,6 +1005,10 @@
                 button.classList.add('disabled');
                 button.classList.remove('active');
             });
+            
+            // README is always enabled and active by default
+            buttons.readme.classList.remove('disabled');
+            buttons.readme.classList.add('active');
             
             // State spec is always enabled when a file is loaded
             buttons.state_spec.classList.remove('disabled');
@@ -968,6 +1060,7 @@
                 // Switch to graph display
                 document.getElementById('fileList').style.display = 'none';
                 document.getElementById('graphDisplay').style.display = 'block';
+                document.getElementById('graphsListHeader').style.display = 'none';
                 
                 // Show header with filename
                 const fileNameWithoutExt = filename.replace('.txt', '');
@@ -994,6 +1087,7 @@
             document.getElementById('fileList').style.display = 'block';
             document.getElementById('graphDisplay').style.display = 'none';
             document.getElementById('graphHeader').style.display = 'none';
+            document.getElementById('graphsListHeader').style.display = 'flex';
             
             // Clear current file
             currentLoadedFile = null;
@@ -1015,6 +1109,143 @@
             contentHeader.className = 'graph-header';
             document.getElementById('contentBody').innerHTML = '<p>Select a file from the navigation menu to view its contents.</p>';
             hideDeleteButton();
+        }
+        
+        // Show create graph modal
+        function showCreateGraphModal() {
+            const modal = document.getElementById('createGraphModal');
+            const input = document.getElementById('graphNameInput');
+            
+            input.value = '';
+            modal.classList.add('show');
+            
+            // Focus the input after modal animation
+            setTimeout(() => input.focus(), 300);
+        }
+        
+        // Hide create graph modal
+        function hideCreateGraphModal() {
+            const modal = document.getElementById('createGraphModal');
+            modal.classList.remove('show');
+        }
+        
+        // Create new file
+        async function createNewFile() {
+            showCreateGraphModal();
+        }
+        
+        // Actually create the file with the given name
+        async function createGraphFile(filename) {
+            // Validate filename
+            if (!/^[a-zA-Z0-9_-]+$/.test(filename)) {
+                alert('Filename can only contain letters, numbers, underscores, and hyphens');
+                return false;
+            }
+            
+            const fullFilename = filename + '.txt';
+            
+            // Check if file already exists
+            try {
+                const response = await fetch('/api/txt-files');
+                const data = await response.json();
+                if (data.files.includes(fullFilename)) {
+                    alert(`File ${fullFilename} already exists. Please choose a different name.`);
+                    return false;
+                }
+            } catch (error) {
+                console.error('Error checking existing files:', error);
+            }
+            
+            // Load template content
+            let defaultContent;
+            try {
+                const templateResponse = await fetch('/api/get-file/templates/new_graph.txt');
+                const templateData = await templateResponse.json();
+                if (templateData.content) {
+                    defaultContent = templateData.content;
+                } else {
+                    throw new Error('Template not found');
+                }
+            } catch (error) {
+                console.error('Error loading template:', error);
+                // Fallback content if template fails to load
+                defaultContent = `# ${filename} Graph Definition
+# Define your graph transitions below
+# Format: source -> target
+# Example:
+# State -> start_node
+# start_node -> process_node
+# process_node -> END
+`;
+            }
+            
+            try {
+                const response = await fetch(`/api/save-file/${fullFilename}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ content: defaultContent })
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    alert(`Error creating file: ${data.error}`);
+                    return false;
+                }
+                
+                // Also create the YAML config file
+                try {
+                    // Load default.yaml content
+                    const yamlResponse = await fetch('/api/get-file/default.yaml');
+                    const yamlData = await yamlResponse.json();
+                    
+                    if (yamlData.content) {
+                        const yamlFilename = filename + '.yaml';
+                        const yamlSaveResponse = await fetch(`/api/save-file/${yamlFilename}`, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({ content: yamlData.content })
+                        });
+                        
+                        const yamlSaveData = await yamlSaveResponse.json();
+                        if (yamlSaveData.error) {
+                            console.warn(`Warning: Could not create ${yamlFilename}:`, yamlSaveData.error);
+                        } else {
+                            console.log(`Created ${yamlFilename} successfully`);
+                        }
+                    }
+                } catch (error) {
+                    console.warn('Warning: Could not create YAML config file:', error);
+                }
+                
+                // File created successfully, now load it in edit mode
+                currentLoadedFile = fullFilename;
+                originalGraphContent = defaultContent;
+                
+                // Switch to graph display
+                document.getElementById('fileList').style.display = 'none';
+                document.getElementById('graphDisplay').style.display = 'block';
+                document.getElementById('graphsListHeader').style.display = 'none';
+                
+                // Show header with filename
+                document.getElementById('selectedFileName').textContent = filename;
+                document.getElementById('graphHeader').style.display = 'flex';
+                
+                // Enter edit mode immediately
+                parseGraph(defaultContent);
+                enterEditMode();
+                
+                return true;
+                
+            } catch (error) {
+                console.error('Error creating file:', error);
+                alert('Error creating file');
+                return false;
+            }
         }
         
         // Initialize close button
@@ -1645,7 +1876,7 @@
                 const contentHeader = document.getElementById('contentHeader');
                 const contentBody = document.getElementById('contentBody');
                 
-                contentHeader.innerHTML = '<div class="graph-header-title"><span>Graph Overview</span></div>';
+                contentHeader.innerHTML = '<div class="graph-header-title"><span>README</span></div>';
                 contentHeader.className = 'graph-header';
                 
                 // Display the overview markdown
@@ -1653,6 +1884,13 @@
                 
                 // Hide delete button since this is not a deletable artifact
                 hideDeleteButton();
+                
+                // Ensure README button is active
+                document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+                const readmeButton = document.querySelector('[data-file="readme"]');
+                if (readmeButton) {
+                    readmeButton.classList.add('active');
+                }
                 
             } catch (error) {
                 console.error('Error loading graph overview:', error);
@@ -1674,7 +1912,36 @@
                 link.classList.add('active');
                 
                 const fileKey = link.dataset.file;
-                const fileName = link.textContent;
+                const fileName = link.querySelector('span').textContent;
+                
+                // Special handling for README button
+                if (fileKey === 'readme') {
+                    if (currentLoadedFile) {
+                        await loadGraphOverview(currentLoadedFile);
+                    } else {
+                        // Show generic README content if no file is loaded
+                        const contentHeader = document.getElementById('contentHeader');
+                        const contentBody = document.getElementById('contentBody');
+                        
+                        contentHeader.innerHTML = '<div class="graph-header-title"><span>README</span></div>';
+                        contentHeader.className = 'graph-header';
+                        
+                        contentBody.innerHTML = `<div class="markdown-content">
+                            <h1>Graph Visualization System</h1>
+                            <p>Select a graph file from the left panel to view its overview and generate artifacts.</p>
+                            <h2>Getting Started</h2>
+                            <ol>
+                                <li>Click "Create New Graph" to create a new graph file</li>
+                                <li>Or select an existing .txt file from the list</li>
+                                <li>Use the navigation buttons to generate different artifacts</li>
+                                <li>Download the complete project as a ZIP file</li>
+                            </ol>
+                        </div>`;
+                        
+                        hideDeleteButton();
+                    }
+                    return;
+                }
                 
                 // Update header with file-loaded style
                 const contentHeader = document.getElementById('contentHeader');
@@ -1763,7 +2030,69 @@
             if (e.target && e.target.id === 'downloadZip') {
                 downloadZipFile();
             }
+            
+            // Handle create graph button
+            if (e.target && e.target.id === 'createGraphButton') {
+                createNewFile();
+            }
+            
+            // Handle create graph modal buttons
+            if (e.target && e.target.id === 'createGraphCancel') {
+                hideCreateGraphModal();
+            }
+            
+            if (e.target && e.target.id === 'createGraphConfirm') {
+                const input = document.getElementById('graphNameInput');
+                const filename = input.value.trim();
+                
+                if (!filename) {
+                    alert('Please enter a graph name');
+                    return;
+                }
+                
+                createGraphFile(filename).then(success => {
+                    if (success) {
+                        hideCreateGraphModal();
+                    }
+                });
+            }
         });
+        
+        // Handle Enter key in graph name input
+        document.getElementById('graphNameInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                const filename = this.value.trim();
+                
+                if (!filename) {
+                    alert('Please enter a graph name');
+                    return;
+                }
+                
+                createGraphFile(filename).then(success => {
+                    if (success) {
+                        hideCreateGraphModal();
+                    }
+                });
+            }
+        });
+        
+        // Handle Escape key to close modal
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                const modal = document.getElementById('createGraphModal');
+                if (modal.classList.contains('show')) {
+                    hideCreateGraphModal();
+                }
+            }
+        });
+    </script>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const createGraphButton = document.getElementById('createGraphButton');
+        if (createGraphButton) {
+            createGraphButton.addEventListener('click', createNewFile);
+        }
+    });
     </script>
 </body>
 </html>

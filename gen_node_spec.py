@@ -1,14 +1,16 @@
 from pathlib import Path
 import yaml
-from mk_utils import mk_agent, get_single_prompt, OpenRouterAgent, get_config
+from mk_utils import mk_agent, get_single_prompt, OpenRouterAgent, setup_project
 
 def generate_node_spec(graph_name, graph_spec):
     """Generate node specification from graph spec and state spec using LLM"""
     print(f"generate_node_spec called with graph_name='{graph_name}'", flush=True)
     
+    config, base_dir = setup_project(graph_name)
+
     # Check if state-spec.md exists
     print("Checking if state-spec.md exists...", flush=True)
-    state_spec_file = Path(graph_name) / "state-spec.md"
+    state_spec_file = base_dir / "state-spec.md"
     if not state_spec_file.exists():
         print("ERROR: state-spec.md does not exist", flush=True)
         raise ValueError("state-spec.md does not exist. Generate state spec first.")
@@ -26,12 +28,12 @@ def generate_node_spec(graph_name, graph_spec):
     # Look for state code file (BaseModel class)
     print("Looking for state code file...", flush=True)
     try:
-        py_files = [f.name for f in Path(graph_name).glob("*.py") if f.name != "__init__.py"]
+        py_files = [f.name for f in base_dir.glob("*.py") if f.name != "__init__.py"]
         print(f"Found Python files: {py_files}", flush=True)
         
         state_code = ""
         for file in py_files:
-            with open(Path(graph_name) / file, "r") as f:
+            with open(base_dir / file, "r") as f:
                 content = f.read()
                 if "(BaseModel)" in content:
                     state_code = content
@@ -44,15 +46,6 @@ def generate_node_spec(graph_name, graph_spec):
     except Exception as e:
         print(f"ERROR reading state code: {e}", flush=True)
         state_code = "State class has not yet been created."
-    
-    # Get config
-    print("Getting config...", flush=True)
-    try:
-        config = get_config(graph_name)
-        print("Config loaded successfully", flush=True)
-    except Exception as e:
-        print(f"ERROR getting config: {e}", flush=True)
-        raise
     
     # Get LLM configuration for spec generation (using 'spec' section like mk_node_spec.py)
     print("Getting LLM configuration...", flush=True)
@@ -109,7 +102,7 @@ def generate_node_spec(graph_name, graph_spec):
     # Extract content based on agent type
     print("Extracting content based on agent type...", flush=True)
     try:
-        node_spec_file = Path(graph_name) / "node-spec.md"
+        node_spec_file = base_dir / "node-spec.md"
         
         if isinstance(agent, OpenRouterAgent):
             print("Processing OpenRouterAgent result", flush=True)

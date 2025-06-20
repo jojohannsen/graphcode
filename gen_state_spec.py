@@ -1,10 +1,10 @@
 from pathlib import Path
 import yaml
-from mk_utils import parse_graph, validate_graph, mk_agent, get_single_prompt, OpenRouterAgent, prepare_working_folder, get_tools
+from mk_utils import parse_graph, validate_graph, mk_agent, get_single_prompt, OpenRouterAgent, get_tools, setup_project, get_base_folder
 
 def generate_state_spec(graph_name, graph_spec):
-    """Generate state specification from graph spec using LLM"""
-    print(f"generate_state_spec called with graph_name='{graph_name}'", flush=True)
+    base_folder = get_base_folder()
+    config, base_dir = setup_project(graph_name)
     
     # Parse and validate graph
     print("Parsing graph...", flush=True)
@@ -27,18 +27,9 @@ def generate_state_spec(graph_name, graph_spec):
         print(f"ERROR: Invalid graph: {validated_graph.validation_messages}", flush=True)
         raise ValueError(f"Invalid graph: {validated_graph.validation_messages}")
     
-    # Prepare working folder and get config
-    print("Preparing working folder and getting config...", flush=True)
-    try:
-        config = prepare_working_folder(graph_name)
-        print("Working folder prepared and config loaded", flush=True)
-    except Exception as e:
-        print(f"ERROR preparing working folder: {e}", flush=True)
-        raise
-    
     # Get LLM configuration for spec generation
     print("Getting LLM configuration...", flush=True)
-    agent_library, llm_provider, llm_model = get_tools(config, 'spec')
+    agent_library, llm_provider, llm_model, cache_type = get_tools(config, 'spec')
     
     # Get prompts from config
     print("Getting prompts from config...", flush=True)
@@ -66,7 +57,7 @@ def generate_state_spec(graph_name, graph_spec):
     print("Creating agent...", flush=True)
     try:
         system_prompt = "You are a technical writer, creating design documents for the development team. You write in markdown."
-        agent = mk_agent(graph_name, llm_provider, llm_model, agent_library, system_prompt=system_prompt)
+        agent = mk_agent(base_folder, graph_name, llm_provider, llm_model, agent_library, system_prompt=system_prompt)
         print(f"Agent created successfully: {type(agent)}", flush=True)
     except Exception as e:
         print(f"ERROR creating agent: {e}", flush=True)
@@ -98,7 +89,7 @@ Please write the State class specification in markdown, and save it to 'state-sp
             print("Processing OpenRouterAgent result", flush=True)
             content = result.choices[0].message.content
             # Write to file
-            state_spec_file = Path(graph_name) / "state-spec.md"
+            state_spec_file = base_dir / "state-spec.md"
             state_spec_file.parent.mkdir(parents=True, exist_ok=True)
             with open(state_spec_file, "w") as f:
                 f.write(content)
@@ -106,7 +97,7 @@ Please write the State class specification in markdown, and save it to 'state-sp
         else:
             print("Processing Agno agent result", flush=True)
             # Agno agent writes file directly
-            state_spec_file = Path(graph_name) / "state-spec.md"
+            state_spec_file = base_dir / "state-spec.md"
             if state_spec_file.exists():
                 with open(state_spec_file, "r") as f:
                     content = f.read()

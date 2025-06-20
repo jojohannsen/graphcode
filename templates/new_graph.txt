@@ -1,0 +1,10 @@
+# comments
+StateClass -> first_node
+# node info, what the node does
+first_node -> second_node  # simplest case, node-to-node transition
+# some node in my application
+some_node -> node_2, node_3, node_4  # parallel destination node execution
+another_node -> routing_function(node_A, node_B)  # conditional edge
+boss_node -> worker_function(state_class_list_field)  # execute worker functions in parallel over list elements
+# END is how the graph execution ends
+final_node -> END

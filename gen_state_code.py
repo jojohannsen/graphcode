@@ -1,14 +1,16 @@
 from pathlib import Path
 import yaml
-from mk_utils import mk_agent, get_single_prompt, OpenRouterAgent, extract_python_code, get_config, get_tools
+from mk_utils import mk_agent, get_single_prompt, OpenRouterAgent, extract_python_code, get_tools, setup_project
 
 def generate_state_code(graph_name, graph_spec):
     """Generate state code from graph spec and state spec using LLM"""
     print(f"generate_state_code called with graph_name='{graph_name}'", flush=True)
     
+    config, base_dir = setup_project(graph_name)
+
     # Check if state-spec.md exists
     print("Checking if state-spec.md exists...", flush=True)
-    state_spec_file = Path(graph_name) / "state-spec.md"
+    state_spec_file = base_dir / "state-spec.md"
     if not state_spec_file.exists():
         print("ERROR: state-spec.md does not exist", flush=True)
         raise ValueError("state-spec.md does not exist. Generate state spec first.")
@@ -23,19 +25,10 @@ def generate_state_code(graph_name, graph_spec):
         print(f"ERROR reading state spec: {e}", flush=True)
         raise
     
-    # Get config
-    print("Getting config...", flush=True)
-    try:
-        config = get_config(graph_name)
-        print("Config loaded successfully", flush=True)
-    except Exception as e:
-        print(f"ERROR getting config: {e}", flush=True)
-        raise
-    
     # Get LLM configuration for code generation
     print("Getting LLM configuration...", flush=True)
-    agent_library, llm_provider, llm_model = get_tools(config, 'code')
-    print(f"LLM config: library={agent_library}, provider={llm_provider}, model={llm_model}", flush=True)
+    agent_library, llm_provider, llm_model, cache_type = get_tools(config, 'code')
+    print(f"LLM config: library={agent_library}, provider={llm_provider}, model={llm_model}, cache={cache_type}", flush=True)
     
     # Get prompts from config
     print("Getting prompts from config...", flush=True)
@@ -91,7 +84,7 @@ def generate_state_code(graph_name, graph_spec):
             print("Processing OpenRouterAgent result", flush=True)
             code = extract_python_code(result.choices[0].message.content)
             # Write to file
-            state_code_file = Path(graph_name) / "state_code.py"
+            state_code_file = base_dir / "state_code.py"
             state_code_file.parent.mkdir(parents=True, exist_ok=True)
             with open(state_code_file, "w") as f:
                 f.write(code)
@@ -100,7 +93,7 @@ def generate_state_code(graph_name, graph_spec):
         else:
             print("Processing Agno agent result", flush=True)
             # Agno agent writes file directly
-            state_code_file = Path(graph_name) / "state_code.py"
+            state_code_file = base_dir / "state_code.py"
             if state_code_file.exists():
                 with open(state_code_file, "r") as f:
                     content = f.read()
