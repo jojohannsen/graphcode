@@ -137,6 +137,19 @@
             color: #ccc;
         }
         
+        .action-button {
+            background-color: #333333;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 8px;
+        }
+        
         .header-button.edit-button:hover {
             color: #ccc;
         }
@@ -385,10 +398,21 @@
         .loading {
             display: flex;
             align-items: center;
+            justify-content: flex-start;
+            height: 100%;
+            font-size: 16px;
+            color: #f1c40f;
+            font-style: italic;
+            padding-left: 20px;
+        }
+        
+        .error {
+            display: flex;
+            align-items: center;
             justify-content: center;
             height: 100%;
             font-size: 16px;
-            color: #666;
+            color: #ff6b6b;
         }
         
         /* Scrollbar styling */
@@ -758,13 +782,13 @@
         <div class="column content-column">
             <div class="graph-header" id="contentHeader">
                 <div class="graph-header-title">
-                    <span>Welcome</span>
+                    <span>Langgraph Code Generator</span>
                 </div>
                 <button class="delete-button" id="deleteButton" title="Delete this file">🗑️</button>
             </div>
             <div class="content-body-wrapper">
                 <div class="content-body" id="contentBody">
-                    <p>Select a file from the navigation menu to view its contents.</p>
+                    <p>Start by selecting a graph from the navigation menu to view its contents.</p>
                 </div>
             </div>
         </div>
@@ -963,7 +987,7 @@
                 });
             } catch (error) {
                 console.error('Error loading txt files:', error);
-                document.getElementById('fileList').innerHTML = '<div style="color: #ff6b6b; text-align: center; padding: 20px;">Error loading files</div>';
+                document.getElementById('fileList').innerHTML = '<div class="error">Error loading files</div>';
             }
         }
         
@@ -1044,19 +1068,7 @@
             // State spec is always enabled when a file is loaded
             buttons.state_spec.classList.remove('disabled');
             
-            // Determine which button should be active
-            if (activeButtonKey && buttons[activeButtonKey] && !buttons[activeButtonKey].classList.contains('disabled')) {
-                // Use the specified active button - don't auto-load content as it should already be displayed
-                buttons[activeButtonKey].classList.add('active');
-            } else if (existingFiles.state_spec) {
-                buttons.state_spec.classList.add('active');
-                // Load the existing state spec content only if no specific button was requested
-                const fileNameWithoutExt = currentLoadedFile.replace('.txt', '');
-                displayExistingFile(`${fileNameWithoutExt}/state-spec.md`, true);
-            } else {
-                buttons.readme.classList.add('active');
-            }
-            
+            // Enable buttons based on file dependencies before setting active state
             // State code enabled if state spec exists
             if (existingFiles.state_spec) {
                 buttons.state_code.classList.remove('disabled');
@@ -1081,6 +1093,19 @@
             if (!buttons.graph_code.classList.contains('disabled') && existingFiles.graph_code) {
                 buttons.main.classList.remove('disabled');
             }
+
+            // Determine which button should be active
+            if (activeButtonKey && buttons[activeButtonKey] && !buttons[activeButtonKey].classList.contains('disabled')) {
+                // Use the specified active button - don't auto-load content as it should already be displayed
+                buttons[activeButtonKey].classList.add('active');
+            } else if (existingFiles.state_spec) {
+                buttons.state_spec.classList.add('active');
+                // Load the existing state spec content only if no specific button was requested
+                const fileNameWithoutExt = currentLoadedFile.replace('.txt', '');
+                displayExistingFile(`${fileNameWithoutExt}/state-spec.md`, true);
+            } else {
+                buttons.readme.classList.add('active');
+            }
             
             // Update checkmarks
             updateCheckmarks(existingFiles);
@@ -1088,13 +1113,12 @@
         
         // Update tooltip with correct path
         function updateTooltips(graphName) {
-            const baseFolder = '~/Desktop/langgraph_apps'; // This should match your base_folder from default.yaml
-            const tooltipText = `Generate State Class specification: ${baseFolder}/${graphName}/state-spec.md`;
+            const tooltipText = `Generate <b>state-spec.md</b>`;
             
             // Update the custom tooltip
             const tooltip = document.getElementById('state-spec-tooltip');
             if (tooltip) {
-                tooltip.textContent = tooltipText;
+                tooltip.innerHTML = tooltipText;
             }
         }
         
@@ -1539,7 +1563,7 @@
                 const data = await response.json();
                 
                 if (data.error) {
-                    contentBody.innerHTML = `<div class="loading">Error: ${data.error}</div>`;
+                    contentBody.innerHTML = `<div class="error">Error: ${data.error}</div>`;
                     return;
                 }
                 
@@ -1557,7 +1581,7 @@
                 
             } catch (error) {
                 console.error('Error generating state spec:', error);
-                contentBody.innerHTML = '<div class="loading">Error generating state specification</div>';
+                contentBody.innerHTML = '<div class="error">Error generating state specification</div>';
                 hideDeleteButton();
             }
         }
@@ -1584,7 +1608,7 @@
                 const data = await response.json();
                 
                 if (data.error) {
-                    contentBody.innerHTML = `<div class="loading">Error: ${data.error}</div>`;
+                    contentBody.innerHTML = `<div class="error">Error: ${data.error}</div>`;
                     return;
                 }
                 
@@ -1603,7 +1627,7 @@
                 
             } catch (error) {
                 console.error('Error generating state code:', error);
-                contentBody.innerHTML = '<div class="loading">Error generating state code</div>';
+                contentBody.innerHTML = '<div class="error">Error generating state code</div>';
                 hideDeleteButton();
             }
         }
@@ -1630,7 +1654,7 @@
                 const data = await response.json();
                 
                 if (data.error) {
-                    contentBody.innerHTML = `<div class="loading">Error: ${data.error}</div>`;
+                    contentBody.innerHTML = `<div class="error">Error: ${data.error}</div>`;
                     return;
                 }
                 
@@ -1648,7 +1672,7 @@
                 
             } catch (error) {
                 console.error('Error generating node spec:', error);
-                contentBody.innerHTML = '<div class="loading">Error generating node specification</div>';
+                contentBody.innerHTML = '<div class="error">Error generating node specification</div>';
                 hideDeleteButton();
             }
         }
@@ -1675,7 +1699,7 @@
                 const data = await response.json();
                 
                 if (data.error) {
-                    contentBody.innerHTML = `<div class="loading">Error: ${data.error}</div>`;
+                    contentBody.innerHTML = `<div class="error">Error: ${data.error}</div>`;
                     return;
                 }
                 
@@ -1694,7 +1718,7 @@
                 
             } catch (error) {
                 console.error('Error generating node code:', error);
-                contentBody.innerHTML = '<div class="loading">Error generating node code</div>';
+                contentBody.innerHTML = '<div class="error">Error generating node code</div>';
                 hideDeleteButton();
             }
         }
@@ -1721,7 +1745,7 @@
                 const data = await response.json();
                 
                 if (data.error) {
-                    contentBody.innerHTML = `<div class="loading">Error: ${data.error}</div>`;
+                    contentBody.innerHTML = `<div class="error">Error: ${data.error}</div>`;
                     return;
                 }
                 
@@ -1740,7 +1764,7 @@
                 
             } catch (error) {
                 console.error('Error generating graph code:', error);
-                contentBody.innerHTML = '<div class="loading">Error generating graph code</div>';
+                contentBody.innerHTML = '<div class="error">Error generating graph code</div>';
                 hideDeleteButton();
             }
         }
@@ -1767,7 +1791,7 @@
                 const data = await response.json();
                 
                 if (data.error) {
-                    contentBody.innerHTML = `<div class="loading">Error: ${data.error}</div>`;
+                    contentBody.innerHTML = `<div class="error">Error: ${data.error}</div>`;
                     return;
                 }
                 
@@ -1786,7 +1810,7 @@
                 
             } catch (error) {
                 console.error('Error generating main code:', error);
-                contentBody.innerHTML = '<div class="loading">Error generating main code</div>';
+                contentBody.innerHTML = '<div class="error">Error generating main code</div>';
                 hideDeleteButton();
             }
         }
@@ -1801,7 +1825,7 @@
                 const data = await response.json();
                 
                 if (data.error) {
-                    contentBody.innerHTML = `<div class="loading">Error: ${data.error}</div>`;
+                    contentBody.innerHTML = `<div class="error">Error: ${data.error}</div>`;
                     hideDeleteButton();
                     return false;
                 }
@@ -1822,7 +1846,7 @@
                 return true;
             } catch (error) {
                 console.error('Error loading existing file:', error);
-                contentBody.innerHTML = '<div class="loading">Error loading existing file</div>';
+                contentBody.innerHTML = '<div class="error">Error loading existing file</div>';
                 hideDeleteButton();
                 return false;
             }
@@ -1915,9 +1939,8 @@
                     
                     // Update UI after successful deletion
                     const contentBody = document.getElementById('contentBody');
-                    contentBody.innerHTML = `<div style="text-align: center; padding: 40px; color: #888;">
-                        <p>File '${fileName}' has been deleted.</p>
-                        <p>Click the corresponding button to regenerate it.</p>
+                    contentBody.innerHTML = `<div class="loading">
+                        <p>'${fileName}' has been deleted.</p>
                     </div>`;
                     
                     hideDeleteButton();
@@ -2088,7 +2111,7 @@
                     }
                 } catch (error) {
                     console.error('Error loading file:', error);
-                    document.getElementById('contentBody').innerHTML = '<div class="loading">Error loading file</div>';
+                    document.getElementById('contentBody').innerHTML = '<div class="error">Error loading file</div>';
                 }
             });
         });
