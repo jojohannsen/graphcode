@@ -1,11 +1,10 @@
 from pathlib import Path
 import yaml
-from mk_utils import mk_agent, get_single_prompt, OpenRouterAgent, extract_python_code, get_tools, setup_project
+from mk_utils import mk_agent, get_single_prompt, OpenRouterAgent, extract_python_code, get_tools, setup_project, get_base_folder
 
 def generate_state_code(graph_name, graph_spec):
     """Generate state code from graph spec and state spec using LLM"""
     print(f"generate_state_code called with graph_name='{graph_name}'", flush=True)
-    
     config, base_dir = setup_project(graph_name)
 
     # Check if state-spec.md exists

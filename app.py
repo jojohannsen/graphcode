@@ -5,6 +5,7 @@ import glob
 import zipfile
 import io
 import datetime
+import yaml
 from gen_state_spec import generate_state_spec
 from gen_state_code import generate_state_code
 from gen_node_spec import generate_node_spec
@@ -13,6 +14,20 @@ from gen_graph_code import generate_graph_code
 from gen_main import generate_main
 
 app = Flask(__name__)
+
+def get_base_folder():
+    """Get base folder from default.yaml configuration"""
+    default_config = Path("default.yaml")
+    base_folder = None
+    with open(default_config, "r") as f:
+        default_config_yaml = yaml.safe_load(f)
+        base_folder = default_config_yaml['base_folder']
+    return os.path.expanduser(base_folder) if base_folder else None
+
+def get_artifacts_base_dir():
+    """Get the base directory where artifacts are stored"""
+    base_folder = get_base_folder()
+    return Path(base_folder) if base_folder else Path(__file__).parent
 
 # Sample graph content for display
 SAMPLE_GRAPH = """# This is the main state machine
@@ -509,7 +524,8 @@ def generate_main_endpoint():
 @app.route('/api/check-file/<path:file_path>')
 def check_file_exists(file_path):
     """Check if a file exists"""
-    full_path = BASE_DIR / file_path
+    artifacts_base_dir = get_artifacts_base_dir()
+    full_path = artifacts_base_dir / file_path
     if full_path.exists() and full_path.is_file():
         return jsonify({'exists': True}), 200
     else:
@@ -518,7 +534,8 @@ def check_file_exists(file_path):
 @app.route('/api/get-file/<path:file_path>')
 def get_existing_file(file_path):
     """Get content of an existing file"""
-    full_path = BASE_DIR / file_path
+    artifacts_base_dir = get_artifacts_base_dir()
+    full_path = artifacts_base_dir / file_path
     if not full_path.exists() or not full_path.is_file():
         return jsonify({'error': 'File not found'}), 404
     
@@ -532,7 +549,8 @@ def get_existing_file(file_path):
 @app.route('/api/delete-file/<path:file_path>', methods=['DELETE'])
 def delete_file(file_path):
     """Delete a file"""
-    full_path = BASE_DIR / file_path
+    artifacts_base_dir = get_artifacts_base_dir()
+    full_path = artifacts_base_dir / file_path
     if not full_path.exists() or not full_path.is_file():
         return jsonify({'error': 'File not found'}), 404
     
@@ -551,7 +569,8 @@ def save_file(file_path):
         data = request.json
         content = data.get('content', '')
         
-        full_path = BASE_DIR / file_path
+        artifacts_base_dir = get_artifacts_base_dir()
+        full_path = artifacts_base_dir / file_path
         
         # Ensure parent directory exists
         full_path.parent.mkdir(parents=True, exist_ok=True)

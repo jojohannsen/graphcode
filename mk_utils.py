@@ -178,7 +178,7 @@ def get_base_folder():
     with open(default_config, "r") as f:
         default_config_yaml = yaml.safe_load(f)
         base_folder = default_config_yaml['base_folder']
-    return base_folder
+    return os.path.expanduser(base_folder) if base_folder else None
 
 def setup_project(graph_name):
     """Prepares working folder and gets config."""
@@ -312,7 +312,7 @@ def extract_python_code(text):
 
 
 
-def mk_agent(base_folder, graph_name, llm_provider, llm_model, agent_library, system_prompt=""):
+def mk_agent(graph_name, llm_provider, llm_model, agent_library, system_prompt=""):
     """
     Creates an agent with the specified configuration.
 
@@ -327,6 +327,7 @@ def mk_agent(base_folder, graph_name, llm_provider, llm_model, agent_library, sy
     Returns:
         object: An agent instance.
     """
+    base_folder = get_base_folder()
     working_dir = Path(base_folder) / graph_name
     print(f"mk_agent: Creating agent with working_dir={working_dir}, agent_library={agent_library}, llm_provider={llm_provider}, llm_model={llm_model}, system_prompt={system_prompt}", flush=True)
     if agent_library == "langchain":

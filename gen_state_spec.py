@@ -1,9 +1,7 @@
 from pathlib import Path
-import yaml
-from mk_utils import parse_graph, validate_graph, mk_agent, get_single_prompt, OpenRouterAgent, get_tools, setup_project, get_base_folder
+from mk_utils import parse_graph, validate_graph, mk_agent, get_single_prompt, OpenRouterAgent, get_tools, setup_project
 
 def generate_state_spec(graph_name, graph_spec):
-    base_folder = get_base_folder()
     config, base_dir = setup_project(graph_name)
     
     # Parse and validate graph
@@ -57,7 +55,7 @@ def generate_state_spec(graph_name, graph_spec):
     print("Creating agent...", flush=True)
     try:
         system_prompt = "You are a technical writer, creating design documents for the development team. You write in markdown."
-        agent = mk_agent(base_folder, graph_name, llm_provider, llm_model, agent_library, system_prompt=system_prompt)
+        agent = mk_agent(graph_name, llm_provider, llm_model, agent_library, system_prompt=system_prompt)
         print(f"Agent created successfully: {type(agent)}", flush=True)
     except Exception as e:
         print(f"ERROR creating agent: {e}", flush=True)

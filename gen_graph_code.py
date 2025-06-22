@@ -70,7 +70,7 @@ def generate_graph_code(graph_name, graph_spec):
     # Create agent (using system_prompt like mk_graph_code.py)
     print("Creating agent...", flush=True)
     try:
-        agent = mk_agent(base_folder,graph_name, llm_provider, llm_model, agent_library, system_prompt=prompt)
+        agent = mk_agent(graph_name, llm_provider, llm_model, agent_library, system_prompt=prompt)
         print(f"Agent created successfully: {type(agent)}", flush=True)
     except Exception as e:
         print(f"ERROR creating agent: {e}", flush=True)

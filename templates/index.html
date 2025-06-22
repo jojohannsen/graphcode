@@ -213,7 +213,6 @@
         .nav-link:hover:not(.disabled) {
             background-color: #353535;
             color: #ffffff;
-            transform: translateX(4px);
         }
         
         .nav-link.active {
@@ -230,6 +229,38 @@
         
         .nav-link.disabled:hover {
             transform: none;
+        }
+        
+        /* Tooltip styles */
+        .tooltip {
+            position: relative;
+        }
+        
+        .tooltip .tooltip-text {
+            visibility: hidden;
+            width: 320px;
+            max-width: 90vw;
+            background-color: #e8f4f8;
+            color: #2c3e50;
+            text-align: left;
+            border-radius: 8px;
+            padding: 12px 16px;
+            position: fixed;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+            font-size: 13px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            border: 2px solid #b8dae6;
+            box-shadow: 0 6px 16px rgba(0,0,0,0.15);
+            line-height: 1.4;
+            word-wrap: break-word;
+            pointer-events: none;
+        }
+        
+        .tooltip .tooltip-text.show {
+            visibility: visible !important;
+            opacity: 1 !important;
         }
         
         /* Third column - Content display */
@@ -695,9 +726,10 @@
                     <span>README</span>
                     <span class="nav-link-checkmark" id="checkmark-readme">📖</span>
                 </a>
-                <a href="#" class="nav-link disabled" data-file="state_spec">
+                <a href="#" class="nav-link disabled tooltip" data-file="state_spec" id="state-spec-button">
                     <span>state spec</span>
                     <span class="nav-link-checkmark" id="checkmark-state_spec">✓</span>
+                    <span class="tooltip-text" id="state-spec-tooltip">Generate State Class specification</span>
                 </a>
                 <a href="#" class="nav-link disabled" data-file="state_code">
                     <span>state code</span>
@@ -989,7 +1021,7 @@
         }
         
         // Update button states based on file dependencies
-        function updateButtonStates(existingFiles) {
+        function updateButtonStates(existingFiles, activeButtonKey = null) {
             const buttons = {
                 readme: document.querySelector('[data-file="readme"]'),
                 state_spec: document.querySelector('[data-file="state_spec"]'),
@@ -1008,10 +1040,22 @@
             
             // README is always enabled and active by default
             buttons.readme.classList.remove('disabled');
-            buttons.readme.classList.add('active');
             
             // State spec is always enabled when a file is loaded
             buttons.state_spec.classList.remove('disabled');
+            
+            // Determine which button should be active
+            if (activeButtonKey && buttons[activeButtonKey] && !buttons[activeButtonKey].classList.contains('disabled')) {
+                // Use the specified active button - don't auto-load content as it should already be displayed
+                buttons[activeButtonKey].classList.add('active');
+            } else if (existingFiles.state_spec) {
+                buttons.state_spec.classList.add('active');
+                // Load the existing state spec content only if no specific button was requested
+                const fileNameWithoutExt = currentLoadedFile.replace('.txt', '');
+                displayExistingFile(`${fileNameWithoutExt}/state-spec.md`, true);
+            } else {
+                buttons.readme.classList.add('active');
+            }
             
             // State code enabled if state spec exists
             if (existingFiles.state_spec) {
@@ -1042,6 +1086,51 @@
             updateCheckmarks(existingFiles);
         }
         
+        // Update tooltip with correct path
+        function updateTooltips(graphName) {
+            const baseFolder = '~/Desktop/langgraph_apps'; // This should match your base_folder from default.yaml
+            const tooltipText = `Generate State Class specification: ${baseFolder}/${graphName}/state-spec.md`;
+            
+            // Update the custom tooltip
+            const tooltip = document.getElementById('state-spec-tooltip');
+            if (tooltip) {
+                tooltip.textContent = tooltipText;
+            }
+        }
+        
+        // Smart tooltip positioning
+        function positionTooltip(button, tooltip) {
+            console.log('positionTooltip called for button:', button.id);
+            const buttonRect = button.getBoundingClientRect();
+            const viewportWidth = window.innerWidth;
+            
+            // Use a fixed width for calculation
+            const tooltipWidth = 320;
+            const tooltipHeight = 60; // Approximate height
+            
+            // Default position: above the button, centered
+            let left = buttonRect.left + (buttonRect.width / 2) - (tooltipWidth / 2);
+            let top = buttonRect.top - tooltipHeight - 10;
+            
+            console.log('Calculated initial position (top, left):', top, left);
+            
+            // Adjust if tooltip goes off the right edge
+            if (left + tooltipWidth > viewportWidth - 10) {
+                left = viewportWidth - tooltipWidth - 10;
+                console.log('Adjusted left for right edge:', left);
+            }
+            
+            // Adjust if tooltip goes off the left edge
+            if (left < 10) {
+                left = 10;
+                console.log('Adjusted left for left edge:', left);
+            }
+            
+            tooltip.style.left = left + 'px';
+            tooltip.style.top = top + 'px';
+            console.log('Final tooltip style set:', { left: tooltip.style.left, top: tooltip.style.top });
+        }
+        
         // Load graph from specific file
         async function loadGraphFromFile(filename) {
             try {
@@ -1070,6 +1159,9 @@
                 // Check existing files and update button states
                 const existingFiles = await checkExistingFiles(fileNameWithoutExt);
                 updateButtonStates(existingFiles);
+                
+                // Update tooltips with correct paths
+                updateTooltips(fileNameWithoutExt);
                 
                 parseGraph(data.content);
                 
@@ -1459,9 +1551,9 @@
                 currentDisplayedArtifact = `${fileNameWithoutExt}/state-spec.md`;
                 showDeleteButton();
                 
-                // Refresh button states after successful generation
+                // Refresh button states after successful generation and keep state_spec active
                 const existingFiles = await checkExistingFiles(fileNameWithoutExt);
-                updateButtonStates(existingFiles);
+                updateButtonStates(existingFiles, 'state_spec');
                 
             } catch (error) {
                 console.error('Error generating state spec:', error);
@@ -1505,9 +1597,9 @@
                 currentDisplayedArtifact = `${fileNameWithoutExt}/state_code.py`;
                 showDeleteButton();
                 
-                // Refresh button states after successful generation
+                // Refresh button states after successful generation and keep state_code active
                 const existingFiles = await checkExistingFiles(fileNameWithoutExt);
-                updateButtonStates(existingFiles);
+                updateButtonStates(existingFiles, 'state_code');
                 
             } catch (error) {
                 console.error('Error generating state code:', error);
@@ -1550,9 +1642,9 @@
                 currentDisplayedArtifact = `${fileNameWithoutExt}/node-spec.md`;
                 showDeleteButton();
                 
-                // Refresh button states after successful generation
+                // Refresh button states after successful generation and keep node_spec active
                 const existingFiles = await checkExistingFiles(fileNameWithoutExt);
-                updateButtonStates(existingFiles);
+                updateButtonStates(existingFiles, 'node_spec');
                 
             } catch (error) {
                 console.error('Error generating node spec:', error);
@@ -1596,9 +1688,9 @@
                 currentDisplayedArtifact = `${fileNameWithoutExt}/node_code.py`;
                 showDeleteButton();
                 
-                // Refresh button states after successful generation
+                // Refresh button states after successful generation and keep node_code active
                 const existingFiles = await checkExistingFiles(fileNameWithoutExt);
-                updateButtonStates(existingFiles);
+                updateButtonStates(existingFiles, 'node_code');
                 
             } catch (error) {
                 console.error('Error generating node code:', error);
@@ -1642,9 +1734,9 @@
                 currentDisplayedArtifact = `${fileNameWithoutExt}/graph_code.py`;
                 showDeleteButton();
                 
-                // Refresh button states after successful generation
+                // Refresh button states after successful generation and keep graph_code active
                 const existingFiles = await checkExistingFiles(fileNameWithoutExt);
-                updateButtonStates(existingFiles);
+                updateButtonStates(existingFiles, 'graph_code');
                 
             } catch (error) {
                 console.error('Error generating graph code:', error);
@@ -1688,9 +1780,9 @@
                 currentDisplayedArtifact = `${fileNameWithoutExt}/main.py`;
                 showDeleteButton();
                 
-                // Refresh button states after successful generation (though main is the last step)
+                // Refresh button states after successful generation and keep main active
                 const existingFiles = await checkExistingFiles(fileNameWithoutExt);
-                updateButtonStates(existingFiles);
+                updateButtonStates(existingFiles, 'main');
                 
             } catch (error) {
                 console.error('Error generating main code:', error);
@@ -2083,6 +2175,34 @@
                 if (modal.classList.contains('show')) {
                     hideCreateGraphModal();
                 }
+            }
+        });
+        
+        // Setup tooltip positioning
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOMContentLoaded event fired. Setting up tooltip.');
+            const stateSpecButton = document.getElementById('state-spec-button');
+            const tooltip = document.getElementById('state-spec-tooltip');
+            
+            if (stateSpecButton && tooltip) {
+                console.log('Found state-spec-button and tooltip element. Attaching events.');
+                stateSpecButton.addEventListener('mouseenter', function(e) {
+                    console.log('Mouse entered state-spec-button.');
+                    // Position the tooltip first
+                    positionTooltip(stateSpecButton, tooltip);
+                    
+                    // Then show it
+                    console.log('Adding "show" class to tooltip.');
+                    tooltip.classList.add('show');
+                });
+                
+                stateSpecButton.addEventListener('mouseleave', function(e) {
+                    console.log('Mouse left state-spec-button.');
+                    console.log('Removing "show" class from tooltip.');
+                    tooltip.classList.remove('show');
+                });
+            } else {
+                console.error('Could not find state-spec-button or tooltip element.');
             }
         });
     </script>
