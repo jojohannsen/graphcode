@@ -14,14 +14,26 @@ from gen_graph_code import generate_graph_code
 from gen_main import generate_main
 
 app = Flask(__name__)
+app.config['DEFAULT_CONFIG'] = None
+
+def load_config():
+    """Load configuration from default.yaml"""
+    if app.config['DEFAULT_CONFIG'] is None:
+        default_config_path = Path("default.yaml")
+        if default_config_path.exists():
+            with open(default_config_path, "r") as f:
+                app.config['DEFAULT_CONFIG'] = yaml.safe_load(f)
+        else:
+            app.config['DEFAULT_CONFIG'] = {}
+
+@app.before_request
+def before_request():
+    """Load config before each request."""
+    load_config()
 
 def get_base_folder():
     """Get base folder from default.yaml configuration"""
-    default_config = Path("default.yaml")
-    base_folder = None
-    with open(default_config, "r") as f:
-        default_config_yaml = yaml.safe_load(f)
-        base_folder = default_config_yaml['base_folder']
+    base_folder = app.config.get('DEFAULT_CONFIG', {}).get('base_folder')
     return os.path.expanduser(base_folder) if base_folder else None
 
 def get_artifacts_base_dir():
@@ -70,6 +82,20 @@ def get_graph(filename):
         return jsonify({'error': 'File not found'}), 404
     
     try:
+        # Create graph-specific folder and yaml file when a graph is selected
+        artifacts_base_dir = get_artifacts_base_dir()
+        if artifacts_base_dir:
+            graph_name = filename.replace('.txt', '')
+            graph_folder_path = artifacts_base_dir / graph_name
+            graph_folder_path.mkdir(parents=True, exist_ok=True)
+            
+            default_yaml_path = BASE_DIR / 'default.yaml'
+            new_yaml_path = graph_folder_path / f"{graph_name}.yaml"
+            
+            if default_yaml_path.exists() and not new_yaml_path.exists():
+                default_yaml_content = default_yaml_path.read_text()
+                new_yaml_path.write_text(default_yaml_content)
+
         with open(file_path, 'r') as f:
             content = f.read()
         return jsonify({'content': content, 'filename': filename})
@@ -590,35 +616,37 @@ def download_zip(filename):
     try:
         # Extract graph name (filename without .txt)
         graph_name = filename.replace('.txt', '')
-        
+        artifacts_base_dir = get_artifacts_base_dir()
+
         # Create zip file in memory
         zip_buffer = io.BytesIO()
         
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-            # Add the original graph specification file
+            # Add the original graph specification file from the project root
             graph_file_path = BASE_DIR / filename
             if graph_file_path.exists():
                 zip_file.write(graph_file_path, f"{graph_name}/{filename}")
             
-            # Define all possible artifact files
+            # Define all possible artifact files, relative to the graph folder
             artifact_files = [
-                ('state-spec.md', f"{graph_name}/state-spec.md"),
-                ('state_code.py', f"{graph_name}/state_code.py"),
-                ('node-spec.md', f"{graph_name}/node-spec.md"),
-                ('node_code.py', f"{graph_name}/node_code.py"),
-                ('graph_code.py', f"{graph_name}/graph_code.py"),
-                ('main.py', f"{graph_name}/main.py"),
-                ('lgcodegen_llm.py', f"{graph_name}/lgcodegen_llm.py"),
-                (f"{graph_name}.yaml", f"{graph_name}/{graph_name}.yaml"),
-                ('human_input.py', f"{graph_name}/human_input.py"),
-                ('llm_cache.py', f"{graph_name}/llm_cache.py")
+                'state-spec.md',
+                'state_code.py',
+                'node-spec.md',
+                'node_code.py',
+                'graph_code.py',
+                'main.py',
+                'lgcodegen_llm.py',
+                f"{graph_name}.yaml",
+                'human_input.py',
+                'llm_cache.py'
             ]
             
-            # Add existing artifact files to the zip
-            for filename_in_zip, file_path in artifact_files:
-                full_path = BASE_DIR / file_path
+            # Add existing artifact files to the zip from the artifacts directory
+            graph_folder_path = artifacts_base_dir / graph_name
+            for artifact_filename in artifact_files:
+                full_path = graph_folder_path / artifact_filename
                 if full_path.exists():
-                    zip_file.write(full_path, f"{graph_name}/{filename_in_zip}")
+                    zip_file.write(full_path, f"{graph_name}/{artifact_filename}")
         
         zip_buffer.seek(0)
         
@@ -640,6 +668,7 @@ def get_graph_overview(filename):
     try:
         # Extract graph name (filename without .txt)
         graph_name = filename.replace('.txt', '')
+        artifacts_base_dir = get_artifacts_base_dir()
         
         # Read the overview template
         overview_template_path = BASE_DIR / 'templates' / 'graph_overview.md'
@@ -651,12 +680,12 @@ def get_graph_overview(filename):
         
         # Define artifact file mappings
         artifacts = [
-            ('state_spec', f"{graph_name}/state-spec.md", "Generate"),
-            ('state_code', f"{graph_name}/state_code.py", "Generate"),
-            ('node_spec', f"{graph_name}/node-spec.md", "Generate"),
-            ('node_code', f"{graph_name}/node_code.py", "Generate"),
-            ('graph_code', f"{graph_name}/graph_code.py", "Generate"),
-            ('main', f"{graph_name}/main.py", "Generate")
+            ('state_spec', "state-spec.md", "Generate"),
+            ('state_code', "state_code.py", "Generate"),
+            ('node_spec', "node-spec.md", "Generate"),
+            ('node_code', "node_code.py", "Generate"),
+            ('graph_code', "graph_code.py", "Generate"),
+            ('main', "main.py", "Generate")
         ]
         
         # Define navigation button names for instructions
@@ -671,8 +700,9 @@ def get_graph_overview(filename):
         
         # Check status of each artifact
         status_data = {}
+        graph_folder_path = artifacts_base_dir / graph_name
         for key, file_path, action in artifacts:
-            full_path = BASE_DIR / file_path
+            full_path = graph_folder_path / file_path
             if full_path.exists():
                 # Get file modification time
                 mod_time = datetime.datetime.fromtimestamp(full_path.stat().st_mtime)

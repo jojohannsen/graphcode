@@ -2187,13 +2187,16 @@
             if (stateSpecButton && tooltip) {
                 console.log('Found state-spec-button and tooltip element. Attaching events.');
                 stateSpecButton.addEventListener('mouseenter', function(e) {
-                    console.log('Mouse entered state-spec-button.');
-                    // Position the tooltip first
-                    positionTooltip(stateSpecButton, tooltip);
-                    
-                    // Then show it
-                    console.log('Adding "show" class to tooltip.');
-                    tooltip.classList.add('show');
+                    const checkmark = stateSpecButton.querySelector('#checkmark-state_spec');
+                    if (checkmark && !checkmark.classList.contains('visible')) {
+                        console.log('Mouse entered state-spec-button.');
+                        // Position the tooltip first
+                        positionTooltip(stateSpecButton, tooltip);
+                        
+                        // Then show it
+                        console.log('Adding "show" class to tooltip.');
+                        tooltip.classList.add('show');
+                    }
                 });
                 
                 stateSpecButton.addEventListener('mouseleave', function(e) {

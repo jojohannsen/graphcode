@@ -177,18 +177,17 @@ def get_base_folder():
     base_folder = None
     with open(default_config, "r") as f:
         default_config_yaml = yaml.safe_load(f)
-        base_folder = default_config_yaml['base_folder']
+        base_folder = default_config_yaml.get('base_folder')
     return os.path.expanduser(base_folder) if base_folder else None
 
 def setup_project(graph_name):
     """Prepares working folder and gets config."""
     print("setup_project: Preparing working folder and getting config...", flush=True)
     base_folder = get_base_folder()
-    print(f"BASE_FOLDER: {base_folder}", flush=True)
     if not base_folder:
         print(f"{Fore.RED}Error: base_folder is not set in default.yaml{Style.RESET_ALL}")
         sys.exit(1)
-    print(f"BASE_FOLDER: {base_folder}", flush=True)
+    
     try:
         config = prepare_working_folder(graph_name)
         base_dir = get_base_dir(base_folder, graph_name)
@@ -199,48 +198,43 @@ def setup_project(graph_name):
 
 def get_config(base_folder, graph_name):
     print(f"get_config: Getting config for {graph_name} in {base_folder}", flush=True)
-    default_config = Path("default.yaml")
-    with open(default_config, "r") as f:
+    
+    # Expand base_folder path
+    expanded_base_folder = Path(os.path.expanduser(base_folder))
+    
+    default_config_path = Path("default.yaml")
+    if not default_config_path.exists():
+        print(f"{Fore.RED}Error: default.yaml does not exist{Style.RESET_ALL}")
+        sys.exit(1)
+        
+    with open(default_config_path, "r") as f:
         default_config_yaml = yaml.safe_load(f)
-        base_folder = default_config_yaml['base_folder']
-    # we look for yaml file first in {graph_name}/{graph_name}.yaml
-    # if not found, we look for {graph_name}.yaml in the current directory, and copy it to {graph_name}/{graph_name}.yaml
-    path_to_yaml = Path(f"{base_folder}/{graph_name}/{graph_name}.yaml")
+    
+    # Path to graph-specific YAML file
+    graph_dir = expanded_base_folder / graph_name
+    graph_dir.mkdir(parents=True, exist_ok=True)
+    path_to_yaml = graph_dir / f"{graph_name}.yaml"
+    
     print(f"PATH_TO_YAML: {path_to_yaml}", flush=True)
+    
     if not path_to_yaml.exists():
         print(f"{Fore.CYAN}Creating: {Fore.BLUE}{path_to_yaml}{Style.RESET_ALL}")
-        # copy default.yaml file to this path
-        if not default_config.exists():
-            print(f"{Fore.RED}Error: default.yaml does not exist{Style.RESET_ALL}")
-            sys.exit(1)
-        # read default.yaml file
-        with open(default_config, "r") as f:
-            default_config_content = f.read()
-            with open(path_to_yaml, "w") as f:
-                f.write(default_config_content)
+        # Copy content from default.yaml
+        with open(path_to_yaml, "w") as f_dest:
+            yaml.dump(default_config_yaml, f_dest)
+    
     print(f"{Fore.CYAN}Reading: {Fore.BLUE}{path_to_yaml}{Style.RESET_ALL}")
-    # read it
     with open(path_to_yaml, "r") as f:
         config = yaml.safe_load(f)
-        # if that config doesn't have prompts, add the default prompts
-        if 'prompts' not in config:
-            config['prompts'] = {}
-            config['prompts']['graph_notation'] = "hub:johannes/lgcodegen-graph-notation"
-            config['prompts']['human_input_example'] = "hub:johannes/lgcodegen-questionary_human_input"
-            config['prompts']['node_code_example'] = "hub:johannes/lgcodegen-node_code_example"
-            config['prompts']['state_spec_prompt'] = "hub:johannes/lgcodegen-gen_state_spec"
-            config['prompts']['state_code_prompt'] = "hub:johannes/lgcodegen-gen_state_code"
-            config['prompts']['node_spec_prompt'] = "hub:johannes/lgcodegen-gen_node_spec"
-            config['prompts']['node_code_prompt'] = "hub:johannes/lgcodegen-gen_node_code"
-            config['prompts']['graph_spec_prompt'] = "hub:johannes/lgcodegen-gen_graph_spec"
-            config['prompts']['graph_code_prompt'] = "hub:johannes/lgcodegen-gen_graph_code"
-    # Expand and resolve base_folder
-    base_folder = config.get('base_folder', '.')
-    base_folder = os.path.expanduser(base_folder)
-    base_folder = str(Path(base_folder).resolve())
-    config['base_folder'] = base_folder
-    # print base folder
-    print(f"BASE_FOLDER: {base_folder}", flush=True)
+        
+    # Ensure prompts section exists
+    if 'prompts' not in config:
+        config['prompts'] = default_config_yaml.get('prompts', {})
+    
+    # Update and resolve base_folder in the config
+    config['base_folder'] = str(expanded_base_folder.resolve())
+    
+    print(f"BASE_FOLDER from get_config: {config['base_folder']}", flush=True)
     return config
 
 def read_file_and_get_subdir(file_path):
@@ -750,25 +744,27 @@ def validate_graph(transitions):
 
 class FileOverwriteManager:
     def __init__(self, file_path, file_description="file"):
-        self.file_path = Path(file_path)
+        self.file_path = file_path
         self.file_description = file_description
-        self.should_continue = True
+        self.backup_path = None
+
     def __enter__(self):
-        if self.file_path.exists():
-            print(f"{Fore.YELLOW}{self.file_description} already exists at {self.file_path}.{Style.RESET_ALL}")
-            overwrite = questionary.confirm(
-                f"Overwrite?"
-            ).ask()
-            if not overwrite:
-                print(f"{Fore.RED}Aborted by user. {self.file_description} will not be overwritten.{Style.RESET_ALL}")
-                self.should_continue = False
+        if os.path.exists(self.file_path):
+            self.backup_path = self.file_path + ".bak"
+            os.rename(self.file_path, self.backup_path)
+            print(f"{Fore.YELLOW}Backed up existing {self.file_description} to {self.backup_path}{Style.RESET_ALL}")
         return self
+
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if not self.file_path.exists():
-            print(f"{Fore.RED}Error: {self.file_description} was not created at {self.file_path}{Style.RESET_ALL}")
-            sys.exit(1)
+        if exc_type:  # If an error occurred
+            if self.backup_path:
+                os.rename(self.backup_path, self.file_path)
+                print(f"{Fore.RED}Error occurred. Restored {self.file_description} from backup.{Style.RESET_ALL}")
+        elif self.backup_path:
+            os.remove(self.backup_path)  # Clean up backup file on success
 
 def get_base_dir(base_folder, graph_name):
-    """Return the base directory for a graph, using config['base_folder'] and graph_name."""
-    return Path(base_folder) / graph_name
+    """Constructs the base directory path for a given graph."""
+    base_folder_path = Path(os.path.expanduser(base_folder))
+    return base_folder_path / graph_name
 
