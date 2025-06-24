@@ -244,6 +244,13 @@
             transform: none;
         }
         
+        .nav-link.generating {
+            pointer-events: none;
+            opacity: 0.7;
+            background-color: #3a3d4e !important;
+            cursor: wait;
+        }
+        
         /* Tooltip styles */
         .tooltip {
             position: relative;
@@ -750,28 +757,27 @@
                     <span>README</span>
                     <span class="nav-link-checkmark" id="checkmark-readme">📖</span>
                 </a>
-                <a href="#" class="nav-link disabled tooltip" data-file="state_spec" id="state-spec-button">
+                <a href="#" title="Generate state-spec.md" class="nav-link disabled tooltip" data-file="state_spec" id="state-spec-button">
                     <span>state spec</span>
                     <span class="nav-link-checkmark" id="checkmark-state_spec">✓</span>
-                    <span class="tooltip-text" id="state-spec-tooltip">Generate State Class specification</span>
                 </a>
-                <a href="#" class="nav-link disabled" data-file="state_code">
+                <a href="#" title="Generate state_code.py" class="nav-link disabled" data-file="state_code">
                     <span>state code</span>
                     <span class="nav-link-checkmark" id="checkmark-state_code">✓</span>
                 </a>
-                <a href="#" class="nav-link disabled" data-file="node_spec">
+                <a href="#" title="Generate node-spec.md" class="nav-link disabled tooltip" data-file="node_spec" id="node-spec-button">
                     <span>node spec</span>
                     <span class="nav-link-checkmark" id="checkmark-node_spec">✓</span>
                 </a>
-                <a href="#" class="nav-link disabled" data-file="node_code">
+                <a href="#" title="Generate node_code.py" class="nav-link disabled" data-file="node_code">
                     <span>node code</span>
                     <span class="nav-link-checkmark" id="checkmark-node_code">✓</span>
                 </a>
-                <a href="#" class="nav-link disabled" data-file="graph_code">
+                <a href="#" title="Generate graph_code.py" class="nav-link disabled" data-file="graph_code">
                     <span>graph code</span>
                     <span class="nav-link-checkmark" id="checkmark-graph_code">✓</span>
                 </a>
-                <a href="#" class="nav-link disabled" data-file="main">
+                <a href="#" title="Generate main.py" class="nav-link disabled" data-file="main">
                     <span>main</span>
                     <span class="nav-link-checkmark" id="checkmark-main">✓</span>
                 </a>
@@ -871,6 +877,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.3.0/marked.min.js"></script>
     
     <script>
+        // Global variable for generation interval
+        let generationInterval = null;
+        
         // Parse and display graph with color coding
         function parseGraph(graphContent) {
             const lines = graphContent.split('\n');
@@ -1032,7 +1041,22 @@
                 graph_code: document.getElementById('checkmark-graph_code'),
                 main: document.getElementById('checkmark-main')
             };
-            
+            const buttonIds = {
+                state_spec: 'state-spec-button',
+                state_code: null, // no id, use querySelector
+                node_spec: 'node-spec-button',
+                node_code: null,
+                graph_code: null,
+                main: null
+            };
+            const fileNames = {
+                state_spec: 'state-spec.md',
+                state_code: 'state_code.py',
+                node_spec: 'node-spec.md',
+                node_code: 'node_code.py',
+                graph_code: 'graph_code.py',
+                main: 'main.py'
+            };
             // Update checkmark visibility for each artifact
             Object.keys(checkmarks).forEach(key => {
                 const checkmark = checkmarks[key];
@@ -1040,6 +1064,21 @@
                     checkmark.classList.add('visible');
                 } else {
                     checkmark.classList.remove('visible');
+                }
+                // Dynamically update the button title
+                let button = null;
+                if (buttonIds[key]) {
+                    button = document.getElementById(buttonIds[key]);
+                } else {
+                    // fallback: select by data-file
+                    button = document.querySelector(`[data-file="${key}"]`);
+                }
+                if (button && checkmark) {
+                    if (checkmark.classList.contains('visible')) {
+                        button.title = `View ${fileNames[key]}`;
+                    } else {
+                        button.title = `Generate ${fileNames[key]}`;
+                    }
                 }
             });
         }
@@ -1132,8 +1171,8 @@
             const tooltipWidth = 320;
             const tooltipHeight = 60; // Approximate height
             
-            // Default position: above the button, centered
-            let left = buttonRect.left + (buttonRect.width / 2) - (tooltipWidth / 2);
+            // Position tooltip slightly above and aligned to the left of the button
+            let left = buttonRect.left;
             let top = buttonRect.top - tooltipHeight - 10;
             
             console.log('Calculated initial position (top, left):', top, left);
@@ -1541,15 +1580,58 @@
             });
         }
         
+        // Start generation process feedback
+        function startGeneration(button, message) {
+            // Hide any active tooltips
+            const tooltip = document.getElementById('state-spec-tooltip');
+            if (tooltip) {
+                tooltip.classList.remove('show');
+            }
+
+            // Set button to generating state
+            if (button) {
+                button.classList.add('generating');
+            }
+
+            // Display animated loading message
+            const contentBody = document.getElementById('contentBody');
+            contentBody.innerHTML = `<div class="loading">${message}</div>`;
+            const loadingElement = contentBody.querySelector('.loading');
+
+            if (generationInterval) {
+                clearInterval(generationInterval);
+            }
+
+            let dotCount = 0;
+            generationInterval = setInterval(() => {
+                dotCount = (dotCount % 333) + 1;
+                const dots = '.'.repeat(dotCount);
+                if (loadingElement) {
+                    loadingElement.textContent = `${message}${dots}`;
+                }
+            }, 1000);
+        }
+
+        // Stop generation process feedback
+        function stopGeneration(button) {
+            if (generationInterval) {
+                clearInterval(generationInterval);
+                generationInterval = null;
+            }
+            if (button) {
+                button.classList.remove('generating');
+            }
+        }
+        
         // Generate state spec
-        async function generateStateSpec() {
+        async function generateStateSpec(button) {
             if (!currentLoadedFile) {
                 alert('No file loaded');
                 return;
             }
             
+            startGeneration(button, 'Generating state specification');
             const contentBody = document.getElementById('contentBody');
-            contentBody.innerHTML = '<div class="loading">Generating state specification...</div>';
             
             try {
                 const response = await fetch('/api/generate/state-spec', {
@@ -1583,18 +1665,20 @@
                 console.error('Error generating state spec:', error);
                 contentBody.innerHTML = '<div class="error">Error generating state specification</div>';
                 hideDeleteButton();
+            } finally {
+                stopGeneration(button);
             }
         }
         
         // Generate state code
-        async function generateStateCode() {
+        async function generateStateCode(button) {
             if (!currentLoadedFile) {
                 alert('No file loaded');
                 return;
             }
             
+            startGeneration(button, 'Generating state code');
             const contentBody = document.getElementById('contentBody');
-            contentBody.innerHTML = '<div class="loading">Generating state code...</div>';
             
             try {
                 const response = await fetch('/api/generate/state-code', {
@@ -1629,18 +1713,20 @@
                 console.error('Error generating state code:', error);
                 contentBody.innerHTML = '<div class="error">Error generating state code</div>';
                 hideDeleteButton();
+            } finally {
+                stopGeneration(button);
             }
         }
         
         // Generate node spec
-        async function generateNodeSpec() {
+        async function generateNodeSpec(button) {
             if (!currentLoadedFile) {
                 alert('No file loaded');
                 return;
             }
             
+            startGeneration(button, 'Generating node specification');
             const contentBody = document.getElementById('contentBody');
-            contentBody.innerHTML = '<div class="loading">Generating node specification...</div>';
             
             try {
                 const response = await fetch('/api/generate/node-spec', {
@@ -1674,18 +1760,20 @@
                 console.error('Error generating node spec:', error);
                 contentBody.innerHTML = '<div class="error">Error generating node specification</div>';
                 hideDeleteButton();
+            } finally {
+                stopGeneration(button);
             }
         }
         
         // Generate node code
-        async function generateNodeCode() {
+        async function generateNodeCode(button) {
             if (!currentLoadedFile) {
                 alert('No file loaded');
                 return;
             }
             
+            startGeneration(button, 'Generating node code');
             const contentBody = document.getElementById('contentBody');
-            contentBody.innerHTML = '<div class="loading">Generating node code...</div>';
             
             try {
                 const response = await fetch('/api/generate/node-code', {
@@ -1720,18 +1808,20 @@
                 console.error('Error generating node code:', error);
                 contentBody.innerHTML = '<div class="error">Error generating node code</div>';
                 hideDeleteButton();
+            } finally {
+                stopGeneration(button);
             }
         }
         
         // Generate graph code
-        async function generateGraphCode() {
+        async function generateGraphCode(button) {
             if (!currentLoadedFile) {
                 alert('No file loaded');
                 return;
             }
             
+            startGeneration(button, 'Generating graph code');
             const contentBody = document.getElementById('contentBody');
-            contentBody.innerHTML = '<div class="loading">Generating graph code...</div>';
             
             try {
                 const response = await fetch('/api/generate/graph-code', {
@@ -1766,18 +1856,20 @@
                 console.error('Error generating graph code:', error);
                 contentBody.innerHTML = '<div class="error">Error generating graph code</div>';
                 hideDeleteButton();
+            } finally {
+                stopGeneration(button);
             }
         }
         
         // Generate main code
-        async function generateMain() {
+        async function generateMain(button) {
             if (!currentLoadedFile) {
                 alert('No file loaded');
                 return;
             }
             
+            startGeneration(button, 'Generating main code');
             const contentBody = document.getElementById('contentBody');
-            contentBody.innerHTML = '<div class="loading">Generating main code...</div>';
             
             try {
                 const response = await fetch('/api/generate/main', {
@@ -1812,6 +1904,8 @@
                 console.error('Error generating main code:', error);
                 contentBody.innerHTML = '<div class="error">Error generating main code</div>';
                 hideDeleteButton();
+            } finally {
+                stopGeneration(button);
             }
         }
         
@@ -2085,7 +2179,7 @@
                         
                         // If file doesn't exist, generate it
                         if (!displayed) {
-                            await mapping.generateFunc();
+                            await mapping.generateFunc(link);
                         }
                         
                         return;

@@ -82,19 +82,24 @@ def get_graph(filename):
         return jsonify({'error': 'File not found'}), 404
     
     try:
-        # Create graph-specific folder and yaml file when a graph is selected
+        def copy_if_needed(src, dest):
+            if src.exists() and not dest.exists():
+                dest.write_text(src.read_text())
+
         artifacts_base_dir = get_artifacts_base_dir()
         if artifacts_base_dir:
             graph_name = filename.replace('.txt', '')
             graph_folder_path = artifacts_base_dir / graph_name
             graph_folder_path.mkdir(parents=True, exist_ok=True)
-            
+
+            # Copy default.yaml
             default_yaml_path = BASE_DIR / 'default.yaml'
             new_yaml_path = graph_folder_path / f"{graph_name}.yaml"
-            
-            if default_yaml_path.exists() and not new_yaml_path.exists():
-                default_yaml_content = default_yaml_path.read_text()
-                new_yaml_path.write_text(default_yaml_content)
+            copy_if_needed(default_yaml_path, new_yaml_path)
+
+            # Copy human_input.py and llm_cache.py
+            copy_if_needed(BASE_DIR / 'human_input.py', graph_folder_path / 'human_input.py')
+            copy_if_needed(BASE_DIR / 'llm_cache.py', graph_folder_path / 'llm_cache.py')
 
         with open(file_path, 'r') as f:
             content = f.read()
