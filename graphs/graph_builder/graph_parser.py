@@ -18,20 +18,124 @@ class TripleQuoteBlock(GraphPrimitive):
         return isinstance(other, TripleQuoteBlock) and self.content == other.content
 
 class PythonComment(GraphPrimitive):
-    """Represents one or more consecutive comment lines (without the # prefix)"""
-    def __init__(self, lines):
-        self.lines = lines if isinstance(lines, list) else [lines]
+    """Represents one or more consecutive comment lines (without the # prefix) as a single text string"""
+    def __init__(self, text):
+        self.text = text if isinstance(text, str) else '\n'.join(text)
     
     def __repr__(self):
-        return f"PythonComment({self.lines})"
+        return f"PythonComment({repr(self.text)})"
     
     def __eq__(self, other):
-        return isinstance(other, PythonComment) and self.lines == other.lines
+        return isinstance(other, PythonComment) and self.text == other.text
 
 class GraphNotation(GraphPrimitive):
     """Represents a graph notation line containing '->'"""
-    def __init__(self, line):
+    def __init__(self, line, is_start_notation=False):
         self.line = line
+        self._is_start = is_start_notation
+        self._lhs = None
+        self._rhs = None
+        self._parse_line()
+    
+    def _parse_line(self):
+        """Parse the line to extract LHS and RHS"""
+        if "->" in self.line:
+            parts = self.line.split("->", 1)
+            self._lhs = parts[0].strip()
+            self._rhs = parts[1].strip()
+        else:
+            self._lhs = self.line.strip()
+            self._rhs = ""
+    
+    @property
+    def lhs(self):
+        """Text preceding '->'"""
+        return self._lhs
+    
+    @property
+    def rhs(self):
+        """Text after '->'"""
+        return self._rhs
+    
+    @property
+    def is_start(self):
+        """True if this is the very first GraphNotation (LHS=State Class, RHS=START node)"""
+        return self._is_start
+    
+    @property
+    def rhs_parameters(self):
+        """List of comma-separated parameters within parentheses on RHS, always returns list"""
+        if not self.rhs:
+            return []
+        
+        # Look for parentheses in RHS
+        paren_start = self.rhs.find('(')
+        paren_end = self.rhs.rfind(')')
+        
+        if paren_start == -1 or paren_end == -1 or paren_start >= paren_end:
+            return []
+        
+        # Extract content between parentheses
+        params_str = self.rhs[paren_start + 1:paren_end]
+        
+        if not params_str.strip():
+            return []
+        
+        # Split by comma and strip whitespace
+        return [param.strip() for param in params_str.split(',') if param.strip()]
+    
+    @property
+    def is_worker(self):
+        """True if worker (indicated by single RHS param ending with '*')"""
+        params = self.rhs_parameters
+        return len(params) == 1 and params[0].endswith('*')
+    
+    @property
+    def is_conditional_edge(self):
+        """True if not a worker and has at least 2 rhs_parameters"""
+        return not self.is_worker and len(self.rhs_parameters) >= 2
+    
+    @property
+    def source_nodes(self):
+        """List of comma-separated words preceding '->'"""
+        if not self.lhs:
+            return []
+        return [node.strip() for node in self.lhs.split(',') if node.strip()]
+    
+    @property
+    def worker_function(self):
+        """If is_worker, RHS excluding parentheses and content, otherwise None"""
+        if not self.is_worker:
+            return None
+        
+        # Find parentheses and return everything before them
+        paren_start = self.rhs.find('(')
+        if paren_start == -1:
+            return self.rhs
+        
+        return self.rhs[:paren_start].strip()
+    
+    def dest_nodes(self, classification=None):
+        """Destination nodes based on NotationClassification"""
+        if classification == NotationClassification.NODE_TO_NODE:
+            return [self.rhs] if self.rhs else []
+        
+        elif classification == NotationClassification.NODE_TO_WORKER:
+            worker_func = self.worker_function
+            return [worker_func] if worker_func else []
+        
+        elif classification == NotationClassification.NODE_TO_PARALLEL_NODES:
+            # List of comma-separated values in RHS
+            if not self.rhs:
+                return []
+            return [node.strip() for node in self.rhs.split(',') if node.strip()]
+        
+        elif classification == NotationClassification.NODE_TO_CONDITIONAL_EDGE:
+            return self.rhs_parameters
+        
+        else:
+            # Default case - return RHS as single item
+            return [self.rhs] if self.rhs else []
     
     def __repr__(self):
         return f"GraphNotation({repr(self.line)})"
@@ -117,10 +221,10 @@ class GraphStructure:
                 
                 # If no preceding comment found, create a default one
                 if preceding_comment is None:
-                    preceding_comment = PythonComment([
+                    preceding_comment = PythonComment(
                         "Comment missing. This comment should provide context and explanation "
                         "for the graph transition that follows."
-                    ])
+                    )
                 
                 # Create the pair
                 pair = CommentNotationPair(preceding_comment, primitive)
@@ -164,6 +268,7 @@ class GraphParser:
         self.primitives = []
         lines = graph_text.split('\n')
         i = 0
+        first_notation_found = False
         
         while i < len(lines):
             line = lines[i]
@@ -190,7 +295,10 @@ class GraphParser:
             
             # Check for notation line (contains ->)
             if '->' in line:
-                self.primitives.append(GraphNotation(line.strip()))
+                # Mark first notation as start notation
+                is_start = not first_notation_found
+                first_notation_found = True
+                self.primitives.append(GraphNotation(line.strip(), is_start_notation=is_start))
             
             i += 1
         
@@ -241,7 +349,7 @@ class GraphParser:
         return content, i
     
     def _parse_comment_group(self, lines, start_idx):
-        """Parse consecutive comment lines and group them together"""
+        """Parse consecutive comment lines and combine them into a single text string"""
         comment_lines = []
         i = start_idx
         
@@ -255,7 +363,9 @@ class GraphParser:
             else:
                 break
         
-        return comment_lines, i - 1
+        # Combine all comment lines into a single string with newlines
+        combined_text = '\n'.join(comment_lines)
+        return combined_text, i - 1
     
     def get_blocks(self):
         """Return all block primitives"""
@@ -297,6 +407,130 @@ def parse_graph_structure(graph_text):
     """
     parser = parse_graph_notation(graph_text)
     return GraphStructure(parser.primitives)
+
+# Test datasets for GraphNotation properties
+NOTATION_PROPERTY_DATASETS = [
+    {
+        "name": "Simple node to node",
+        "content": "A -> B",
+        "is_start": False,
+        "expected": {
+            "lhs": "A",
+            "rhs": "B", 
+            "rhs_parameters": [],
+            "is_worker": False,
+            "is_conditional_edge": False,
+            "source_nodes": ["A"],
+            "worker_function": None,
+            "dest_nodes_node_to_node": ["B"]
+        }
+    },
+    {
+        "name": "Start notation",
+        "content": "StateClass -> start_node",
+        "is_start": True,
+        "expected": {
+            "lhs": "StateClass",
+            "rhs": "start_node",
+            "rhs_parameters": [],
+            "is_worker": False,
+            "is_conditional_edge": False,
+            "source_nodes": ["StateClass"],
+            "worker_function": None,
+            "dest_nodes_node_to_node": ["start_node"]
+        }
+    },
+    {
+        "name": "Worker notation",
+        "content": "node1 -> worker_func(item*)",
+        "is_start": False,
+        "expected": {
+            "lhs": "node1",
+            "rhs": "worker_func(item*)",
+            "rhs_parameters": ["item*"],
+            "is_worker": True,
+            "is_conditional_edge": False,
+            "source_nodes": ["node1"],
+            "worker_function": "worker_func",
+            "dest_nodes_worker": ["worker_func"]
+        }
+    },
+    {
+        "name": "Conditional edge notation",
+        "content": "node1 -> route_decision(option1, option2, option3)",
+        "is_start": False,
+        "expected": {
+            "lhs": "node1",
+            "rhs": "route_decision(option1, option2, option3)",
+            "rhs_parameters": ["option1", "option2", "option3"],
+            "is_worker": False,
+            "is_conditional_edge": True,
+            "source_nodes": ["node1"],
+            "worker_function": None,
+            "dest_nodes_conditional": ["option1", "option2", "option3"]
+        }
+    },
+    {
+        "name": "Parallel nodes notation",
+        "content": "node1 -> node2, node3, node4",
+        "is_start": False,
+        "expected": {
+            "lhs": "node1",
+            "rhs": "node2, node3, node4",
+            "rhs_parameters": [],
+            "is_worker": False,
+            "is_conditional_edge": False,
+            "source_nodes": ["node1"],
+            "worker_function": None,
+            "dest_nodes_parallel": ["node2", "node3", "node4"]
+        }
+    },
+    {
+        "name": "Multiple source nodes",
+        "content": "node1, node2, node3 -> target",
+        "is_start": False,
+        "expected": {
+            "lhs": "node1, node2, node3",
+            "rhs": "target",
+            "rhs_parameters": [],
+            "is_worker": False,
+            "is_conditional_edge": False,
+            "source_nodes": ["node1", "node2", "node3"],
+            "worker_function": None,
+            "dest_nodes_node_to_node": ["target"]
+        }
+    },
+    {
+        "name": "Complex conditional with whitespace",
+        "content": "decision_node -> choose( path_a , path_b , path_c )",
+        "is_start": False,
+        "expected": {
+            "lhs": "decision_node",
+            "rhs": "choose( path_a , path_b , path_c )",
+            "rhs_parameters": ["path_a", "path_b", "path_c"],
+            "is_worker": False,
+            "is_conditional_edge": True,
+            "source_nodes": ["decision_node"],
+            "worker_function": None,
+            "dest_nodes_conditional": ["path_a", "path_b", "path_c"]
+        }
+    },
+    {
+        "name": "Empty parameters",
+        "content": "node1 -> func()",
+        "is_start": False,
+        "expected": {
+            "lhs": "node1",
+            "rhs": "func()",
+            "rhs_parameters": [],
+            "is_worker": False,
+            "is_conditional_edge": False,
+            "source_nodes": ["node1"],
+            "worker_function": None,
+            "dest_nodes_node_to_node": ["func()"]
+        }
+    }
+]
 
 # Test datasets for GraphStructure testing
 STRUCTURE_TEST_DATASETS = [
@@ -370,7 +604,7 @@ parse_graph -> make_README''',
         ]
     },
     {
-        "name": "Multiple consecutive comments (only last one pairs with notation)",
+        "name": "Multiple consecutive comments (all combined with newlines)",
         "content": '''"""README"""
 # First comment
 # Second comment  
@@ -378,7 +612,7 @@ parse_graph -> make_README''',
 A -> B''',
         "expected_readme": "README",
         "expected_pairs": [
-            ("Third comment", "A -> B")  # Only the immediately preceding comment pairs
+            ("First comment\nSecond comment\nThird comment", "A -> B")  # All comments combined with newlines
         ]
     }
 ]
@@ -401,22 +635,22 @@ block with content
     {
         "name": "Single comment line",
         "content": "# This is a comment",
-        "expected": [PythonComment(["This is a comment"])]
+        "expected": [PythonComment("This is a comment")]
     },
     {
         "name": "Multiple consecutive comments",
         "content": "# First comment\n# Second comment\n# Third comment",
-        "expected": [PythonComment(["First comment", "Second comment", "Third comment"])]
+        "expected": [PythonComment("First comment\nSecond comment\nThird comment")]
     },
     {
         "name": "Simple graph notation",
         "content": "A -> B",
-        "expected": [GraphNotation("A -> B")]
+        "expected": [GraphNotation("A -> B", is_start_notation=True)]  # First notation is start
     },
     {
         "name": "Complex graph notation",
         "content": "GraphImplementation -> parse_graph",
-        "expected": [GraphNotation("GraphImplementation -> parse_graph")]
+        "expected": [GraphNotation("GraphImplementation -> parse_graph", is_start_notation=True)]  # First notation is start
     },
     {
         "name": "Mixed content - block then comment then notation",
@@ -425,8 +659,8 @@ block with content
 A -> B''',
         "expected": [
             TripleQuoteBlock("Block content"),
-            PythonComment(["Comment line"]),
-            GraphNotation("A -> B")
+            PythonComment("Comment line"),
+            GraphNotation("A -> B", is_start_notation=True)  # First notation is start
         ]
     },
     {
@@ -441,10 +675,10 @@ GraphImplementation -> parse_graph
 parse_graph -> make_README''',
         "expected": [
             TripleQuoteBlock("This graph is the reasoning unit that translate a langgraph graph notation\ninto langgraph source code."),
-            PythonComment(["We invoke with a string containing the graph notation"]),
-            GraphNotation("GraphImplementation -> parse_graph"),
-            PythonComment(["Break the graph into block/comment/notation list"]),
-            GraphNotation("parse_graph -> make_README")
+            PythonComment("We invoke with a string containing the graph notation"),
+            GraphNotation("GraphImplementation -> parse_graph", is_start_notation=True),  # First notation is start
+            PythonComment("Break the graph into block/comment/notation list"),
+            GraphNotation("parse_graph -> make_README", is_start_notation=False)  # Second notation is not start
         ]
     },
     {
@@ -456,8 +690,8 @@ parse_graph -> make_README''',
 A -> B''',
         "expected": [
             TripleQuoteBlock("Block"),
-            PythonComment(["Comment"]),
-            GraphNotation("A -> B")
+            PythonComment("Comment"),
+            GraphNotation("A -> B", is_start_notation=True)  # First notation is start
         ]
     },
     {
@@ -468,8 +702,8 @@ A -> B''',
 # Second group comment 1
 # Second group comment 2''',
         "expected": [
-            PythonComment(["First group comment 1", "First group comment 2"]),
-            PythonComment(["Second group comment 1", "Second group comment 2"])
+            PythonComment("First group comment 1\nFirst group comment 2"),
+            PythonComment("Second group comment 1\nSecond group comment 2")
         ]
     }
 ]
@@ -527,17 +761,12 @@ class TestGraphParser(unittest.TestCase):
                 
                 # Check each pair matches expected comment and notation
                 for i, (pair, (expected_comment, expected_notation)) in enumerate(zip(structure.pairs, dataset["expected_pairs"])):
-                    # Check comment (handle both single string and list of strings)
-                    if isinstance(expected_comment, str):
-                        expected_comment_lines = [expected_comment]
-                    else:
-                        expected_comment_lines = expected_comment
-                    
+                    # Check comment text
                     self.assertEqual(
-                        pair.comment.lines,
-                        expected_comment_lines,
+                        pair.comment.text,
+                        expected_comment,
                         f"Comment mismatch in pair {i} for '{dataset['name']}'. "
-                        f"Got: {pair.comment.lines}, expected: {expected_comment_lines}"
+                        f"Got: {repr(pair.comment.text)}, expected: {repr(expected_comment)}"
                     )
                     
                     # Check notation
@@ -548,7 +777,92 @@ class TestGraphParser(unittest.TestCase):
                         f"Got: {pair.notation.line}, expected: {expected_notation}"
                     )
     
+    def test_notation_properties(self):
+        """Test GraphNotation properties against datasets"""
+        for dataset in NOTATION_PROPERTY_DATASETS:
+            with self.subTest(dataset=dataset["name"]):
+                # Create a GraphNotation with the specified is_start value
+                notation = GraphNotation(dataset["content"], is_start_notation=dataset["is_start"])
+                expected = dataset["expected"]
+                
+                # Test basic properties
+                self.assertEqual(notation.lhs, expected["lhs"], f"LHS mismatch for {dataset['name']}")
+                self.assertEqual(notation.rhs, expected["rhs"], f"RHS mismatch for {dataset['name']}")
+                self.assertEqual(notation.is_start, dataset["is_start"], f"is_start mismatch for {dataset['name']}")
+                self.assertEqual(notation.rhs_parameters, expected["rhs_parameters"], f"rhs_parameters mismatch for {dataset['name']}")
+                self.assertEqual(notation.is_worker, expected["is_worker"], f"is_worker mismatch for {dataset['name']}")
+                self.assertEqual(notation.is_conditional_edge, expected["is_conditional_edge"], f"is_conditional_edge mismatch for {dataset['name']}")
+                self.assertEqual(notation.source_nodes, expected["source_nodes"], f"source_nodes mismatch for {dataset['name']}")
+                self.assertEqual(notation.worker_function, expected["worker_function"], f"worker_function mismatch for {dataset['name']}")
+                
+                # Test dest_nodes with different classifications
+                if "dest_nodes_node_to_node" in expected:
+                    actual = notation.dest_nodes(NotationClassification.NODE_TO_NODE)
+                    self.assertEqual(actual, expected["dest_nodes_node_to_node"], f"dest_nodes NODE_TO_NODE mismatch for {dataset['name']}")
+                
+                if "dest_nodes_worker" in expected:
+                    actual = notation.dest_nodes(NotationClassification.NODE_TO_WORKER)
+                    self.assertEqual(actual, expected["dest_nodes_worker"], f"dest_nodes NODE_TO_WORKER mismatch for {dataset['name']}")
+                
+                if "dest_nodes_parallel" in expected:
+                    actual = notation.dest_nodes(NotationClassification.NODE_TO_PARALLEL_NODES)
+                    self.assertEqual(actual, expected["dest_nodes_parallel"], f"dest_nodes NODE_TO_PARALLEL_NODES mismatch for {dataset['name']}")
+                
+                if "dest_nodes_conditional" in expected:
+                    actual = notation.dest_nodes(NotationClassification.NODE_TO_CONDITIONAL_EDGE)
+                    self.assertEqual(actual, expected["dest_nodes_conditional"], f"dest_nodes NODE_TO_CONDITIONAL_EDGE mismatch for {dataset['name']}")
+    
+    def test_first_notation_is_start(self):
+        """Test that first notation in parsed graph is marked as start"""
+        content = '''"""README"""
+# Comment 1
+First -> Second
+# Comment 2  
+Second -> Third'''
+        
+        structure = parse_graph_structure(content)
+        
+        # Should have 2 pairs
+        self.assertEqual(len(structure.pairs), 2)
+        
+        # First notation should be marked as start
+        self.assertTrue(structure.pairs[0].notation.is_start)
+        self.assertFalse(structure.pairs[1].notation.is_start)
+        
+        # Verify the start notation properties
+        start_notation = structure.pairs[0].notation
+        self.assertEqual(start_notation.lhs, "First")
+        self.assertEqual(start_notation.rhs, "Second")
+    
     def test_classification_functionality(self):
+        """Test classification and analysis functionality"""
+        content = '''"""Test graph"""
+# Comment 1
+A -> B
+# Comment 2  
+B -> C'''
+        
+        structure = parse_graph_structure(content)
+        
+        # Test initial state - no classifications
+        self.assertEqual(len(structure.get_unclassified_pairs()), 2)
+        self.assertEqual(len(structure.get_classified_pairs(NotationClassification.NODE_TO_NODE)), 0)
+        
+        # Manually classify first pair
+        structure.pairs[0].classification = NotationClassification.NODE_TO_NODE
+        structure.pairs[0].implied_state_fields = ["state_a", "state_b"]
+        structure.pairs[0].implied_source_nodes = ["A"]
+        structure.pairs[0].implied_destination_nodes = ["B"]
+        
+        # Test classification queries
+        self.assertEqual(len(structure.get_unclassified_pairs()), 1)
+        self.assertEqual(len(structure.get_classified_pairs(NotationClassification.NODE_TO_NODE)), 1)
+        
+        # Test analysis data
+        classified_pair = structure.get_classified_pairs(NotationClassification.NODE_TO_NODE)[0]
+        self.assertEqual(classified_pair.implied_state_fields, ["state_a", "state_b"])
+        self.assertEqual(classified_pair.implied_source_nodes, ["A"])
+        self.assertEqual(classified_pair.implied_destination_nodes, ["B"])
         """Test classification and analysis functionality"""
         content = '''"""Test graph"""
 # Comment 1
@@ -614,15 +928,25 @@ if __name__ == "__main__":
                 print(f"\nComment-Notation Pairs ({len(structure.pairs)}):")
                 print("-" * 30)
                 for i, pair in enumerate(structure.pairs, 1):
-                    print(f"\n{i}. Comment: {pair.comment.lines}")
+                    print(f"\n{i}. Comment: {repr(pair.comment.text)}")
                     print(f"   Notation: {pair.notation.line}")
+                    print(f"   LHS: '{pair.notation.lhs}' | RHS: '{pair.notation.rhs}'")
+                    print(f"   Is Start: {pair.notation.is_start}")
+                    print(f"   Source Nodes: {pair.notation.source_nodes}")
+                    print(f"   RHS Parameters: {pair.notation.rhs_parameters}")
+                    print(f"   Is Worker: {pair.notation.is_worker}")
+                    print(f"   Is Conditional Edge: {pair.notation.is_conditional_edge}")
+                    print(f"   Worker Function: {pair.notation.worker_function}")
                     print(f"   Classification: {pair.classification}")
+                    if pair.classification:
+                        dest_nodes = pair.notation.dest_nodes(pair.classification)
+                        print(f"   Destination Nodes: {dest_nodes}")
                     if pair.implied_state_fields:
                         print(f"   State Fields: {pair.implied_state_fields}")
                     if pair.implied_source_nodes:
-                        print(f"   Source Nodes: {pair.implied_source_nodes}")
+                        print(f"   Implied Source Nodes: {pair.implied_source_nodes}")
                     if pair.implied_destination_nodes:
-                        print(f"   Destination Nodes: {pair.implied_destination_nodes}")
+                        print(f"   Implied Destination Nodes: {pair.implied_destination_nodes}")
                     if pair.errors:
                         print(f"   Errors: {pair.errors}")
                     if pair.clarifications_needed:
