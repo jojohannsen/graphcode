@@ -1,4 +1,11 @@
-State -> generate_joke
+"""
+# Prompt Chaining
+
+This is invoked with a topic for the joke, we then ask for human feedback on the joke, and if they have
+feedback, we make a final version of the joke, then 
+we END
+"""
+JokeState -> generate_joke
 # ask human for the topic, then generate a joke based on topic value
 generate_joke -> check_punchline(improve_joke, END)
 # generate an improved version of that same joke

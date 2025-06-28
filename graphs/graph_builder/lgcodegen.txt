@@ -1,0 +1,47 @@
+"""
+This graph is the reasoning unit that translate a langgraph graph notation
+into langgraph source code.
+
+Each state field includes a hash of its value, which we use to detect if a 
+field has changed.   For example, the 'graph_notation' field in the state has
+a corresponding 'graph_notation_hash', which is a hash of its value, and a 'graph_notation_changed' boolean field, which we set whenever the 'graph_notation' itself changes.
+"""
+# We invoke with a string containing the graph notation
+GraphImplementation -> parse_graph
+# Break the graph into block/comment/notation list
+parse_graph -> make_README
+
+# Use very first block as README markdown if present,
+# otherwise generate README content
+make_README -> classify( comment/notation* )
+
+# classify a comment/notation pair as one of the following:  NodeToNode, NodeToWorker, NodeToParallelNodes, NodeToConditionalEdge
+classify -> make_state
+
+# collect all the state fields implied by the graph,
+# also collect errors encountered and clarifications needed
+make_state -> make_nodes, make_conditional_edges, make_workers
+
+# collect all the Node Functions encountered in the graph, 
+# fields they READ and WRITE, any errors and clarifications needed
+make_nodes ->review_graph
+
+# collect all the Conditional Edge Functions encountered in the graph,
+# fields they READ, how they decide where to route, any errors and clarifications needed
+make_conditional_edges -> review_graph
+
+# summarize the graph into a single markdown field saved in state.
+# The summary includes:
+#   State class, fields
+#   Node Functions
+#   Conditional Edge Functions
+#   Worker Functions
+#   Errors
+#   Clarifications Needed
+review_graph -> review_with_human
+
+# get human input about changes needed, if there are changes, regenerate
+review_with_human -> changes_requested(change_graph, END)
+
+# make the changes requested
+change_graph -> parse_graph

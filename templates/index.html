@@ -29,6 +29,11 @@
             height: 100vh;
             gap: 1px;
             background-color: #2a2a2a;
+            transition: grid-template-columns 0.3s ease;
+        }
+        
+        .container.editing-mode {
+            grid-template-columns: 4fr 1fr 2fr;
         }
         
         .column {
@@ -1615,6 +1620,9 @@
             document.getElementById('graphContent').classList.add('edit-mode');
             document.getElementById('editControls').classList.add('show');
             
+            // Expand the first column for editing
+            document.querySelector('.container').classList.add('editing-mode');
+            
             // Hide edit button
             document.getElementById('editGraph').style.display = 'none';
             
@@ -1659,6 +1667,9 @@
             // Show graph display and edit button
             document.getElementById('graphContent').classList.remove('edit-mode');
             document.getElementById('editGraph').style.display = 'block';
+            
+            // Restore normal column layout
+            document.querySelector('.container').classList.remove('editing-mode');
             
             // Re-enable navigation buttons (with proper state checking)
             if (currentLoadedFile) {
