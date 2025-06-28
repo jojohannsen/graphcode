@@ -246,6 +246,22 @@ class GraphStructure:
         """Return pairs that haven't been classified yet"""
         return [pair for pair in self.pairs if pair.classification is None]
     
+    def auto_classify_pairs(self):
+        """Automatically classify all unclassified pairs based on notation properties"""
+        for pair in self.pairs:
+            if pair.classification is None:
+                notation = pair.notation
+                
+                if notation.is_worker:
+                    pair.classification = NotationClassification.NODE_TO_WORKER
+                elif notation.is_conditional_edge:
+                    pair.classification = NotationClassification.NODE_TO_CONDITIONAL_EDGE
+                elif ',' in notation.rhs and not notation.rhs_parameters:
+                    # Parallel nodes - comma-separated destinations without parentheses
+                    pair.classification = NotationClassification.NODE_TO_PARALLEL_NODES
+                else:
+                    pair.classification = NotationClassification.NODE_TO_NODE
+    
     def __repr__(self):
         return f"GraphStructure(readme_length={len(self.readme)}, pairs={len(self.pairs)})"
 
@@ -918,6 +934,9 @@ if __name__ == "__main__":
                 # Parse and show structure
                 structure = parse_graph_structure(graph_text)
                 
+                # Auto-classify all pairs before displaying
+                structure.auto_classify_pairs()
+                
                 print(f"Graph Structure Analysis for '{args.filepath}':")
                 print("=" * 50)
                 
@@ -928,8 +947,8 @@ if __name__ == "__main__":
                 print(f"\nComment-Notation Pairs ({len(structure.pairs)}):")
                 print("-" * 30)
                 for i, pair in enumerate(structure.pairs, 1):
-                    print(f"\n{i}. Comment: {repr(pair.comment.text)}")
-                    print(f"   Notation: {pair.notation.line}")
+                    print(f"\n{i}. {pair.notation.line}")
+                    print(f"   Comment: {repr(pair.comment.text)}")
                     print(f"   LHS: '{pair.notation.lhs}' | RHS: '{pair.notation.rhs}'")
                     print(f"   Is Start: {pair.notation.is_start}")
                     print(f"   Source Nodes: {pair.notation.source_nodes}")
@@ -937,7 +956,7 @@ if __name__ == "__main__":
                     print(f"   Is Worker: {pair.notation.is_worker}")
                     print(f"   Is Conditional Edge: {pair.notation.is_conditional_edge}")
                     print(f"   Worker Function: {pair.notation.worker_function}")
-                    print(f"   Classification: {pair.classification}")
+                    print(f"   Classification: {pair.classification.value if pair.classification else None}")
                     if pair.classification:
                         dest_nodes = pair.notation.dest_nodes(pair.classification)
                         print(f"   Destination Nodes: {dest_nodes}")
