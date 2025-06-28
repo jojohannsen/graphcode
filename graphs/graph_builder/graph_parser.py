@@ -115,6 +115,19 @@ class GraphNotation(GraphPrimitive):
         
         return self.rhs[:paren_start].strip()
     
+    @property
+    def rhs_function(self):
+        """Extract function name from RHS (text before parentheses), or None if no parentheses"""
+        if not self.rhs:
+            return None
+        
+        # Find parentheses and return everything before them
+        paren_start = self.rhs.find('(')
+        if paren_start == -1:
+            return None
+        
+        return self.rhs[:paren_start].strip()
+    
     def dest_nodes(self, classification=None):
         """Destination nodes based on NotationClassification"""
         if classification == NotationClassification.NODE_TO_NODE:
@@ -159,11 +172,20 @@ class CommentNotationPair:
         
         # Analysis data - initialized as empty, to be populated by analysis
         self.classification: Optional[NotationClassification] = None
+        self.state_class: Optional[str] = None
+        self.conditional_edge_function: Optional[str] = None
         self.implied_state_fields: List[str] = []
         self.implied_source_nodes: List[str] = []
         self.implied_destination_nodes: List[str] = []
         self.errors: List[str] = []
         self.clarifications_needed: List[str] = []
+    
+    @property 
+    def source_nodes(self):
+        """Source nodes - empty list if this is a start notation, otherwise from notation"""
+        if self.notation.is_start:
+            return []
+        return self.notation.source_nodes
     
     def __repr__(self):
         return f"CommentNotationPair(comment={self.comment}, notation={self.notation}, classification={self.classification})"
@@ -252,10 +274,15 @@ class GraphStructure:
             if pair.classification is None:
                 notation = pair.notation
                 
+                # Set state class for start notation
+                if notation.is_start:
+                    pair.state_class = notation.lhs
+                
                 if notation.is_worker:
                     pair.classification = NotationClassification.NODE_TO_WORKER
                 elif notation.is_conditional_edge:
                     pair.classification = NotationClassification.NODE_TO_CONDITIONAL_EDGE
+                    pair.conditional_edge_function = notation.rhs_function
                 elif ',' in notation.rhs and not notation.rhs_parameters:
                     # Parallel nodes - comma-separated destinations without parentheses
                     pair.classification = NotationClassification.NODE_TO_PARALLEL_NODES
@@ -438,6 +465,7 @@ NOTATION_PROPERTY_DATASETS = [
             "is_conditional_edge": False,
             "source_nodes": ["A"],
             "worker_function": None,
+            "rhs_function": None,
             "dest_nodes_node_to_node": ["B"]
         }
     },
@@ -453,6 +481,7 @@ NOTATION_PROPERTY_DATASETS = [
             "is_conditional_edge": False,
             "source_nodes": ["StateClass"],
             "worker_function": None,
+            "rhs_function": None,
             "dest_nodes_node_to_node": ["start_node"]
         }
     },
@@ -468,6 +497,7 @@ NOTATION_PROPERTY_DATASETS = [
             "is_conditional_edge": False,
             "source_nodes": ["node1"],
             "worker_function": "worker_func",
+            "rhs_function": "worker_func",
             "dest_nodes_worker": ["worker_func"]
         }
     },
@@ -483,6 +513,7 @@ NOTATION_PROPERTY_DATASETS = [
             "is_conditional_edge": True,
             "source_nodes": ["node1"],
             "worker_function": None,
+            "rhs_function": "route_decision",
             "dest_nodes_conditional": ["option1", "option2", "option3"]
         }
     },
@@ -498,6 +529,7 @@ NOTATION_PROPERTY_DATASETS = [
             "is_conditional_edge": False,
             "source_nodes": ["node1"],
             "worker_function": None,
+            "rhs_function": None,
             "dest_nodes_parallel": ["node2", "node3", "node4"]
         }
     },
@@ -513,6 +545,7 @@ NOTATION_PROPERTY_DATASETS = [
             "is_conditional_edge": False,
             "source_nodes": ["node1", "node2", "node3"],
             "worker_function": None,
+            "rhs_function": None,
             "dest_nodes_node_to_node": ["target"]
         }
     },
@@ -528,6 +561,7 @@ NOTATION_PROPERTY_DATASETS = [
             "is_conditional_edge": True,
             "source_nodes": ["decision_node"],
             "worker_function": None,
+            "rhs_function": "choose",
             "dest_nodes_conditional": ["path_a", "path_b", "path_c"]
         }
     },
@@ -543,7 +577,24 @@ NOTATION_PROPERTY_DATASETS = [
             "is_conditional_edge": False,
             "source_nodes": ["node1"],
             "worker_function": None,
+            "rhs_function": "func",
             "dest_nodes_node_to_node": ["func()"]
+        }
+    },
+    {
+        "name": "No parentheses - no rhs_function",
+        "content": "node1 -> simple_target",
+        "is_start": False,
+        "expected": {
+            "lhs": "node1",
+            "rhs": "simple_target",
+            "rhs_parameters": [],
+            "is_worker": False,
+            "is_conditional_edge": False,
+            "source_nodes": ["node1"],
+            "worker_function": None,
+            "rhs_function": None,
+            "dest_nodes_node_to_node": ["simple_target"]
         }
     }
 ]
@@ -810,6 +861,7 @@ class TestGraphParser(unittest.TestCase):
                 self.assertEqual(notation.is_conditional_edge, expected["is_conditional_edge"], f"is_conditional_edge mismatch for {dataset['name']}")
                 self.assertEqual(notation.source_nodes, expected["source_nodes"], f"source_nodes mismatch for {dataset['name']}")
                 self.assertEqual(notation.worker_function, expected["worker_function"], f"worker_function mismatch for {dataset['name']}")
+                self.assertEqual(notation.rhs_function, expected["rhs_function"], f"rhs_function mismatch for {dataset['name']}")
                 
                 # Test dest_nodes with different classifications
                 if "dest_nodes_node_to_node" in expected:
@@ -837,6 +889,7 @@ First -> Second
 Second -> Third'''
         
         structure = parse_graph_structure(content)
+        structure.auto_classify_pairs()
         
         # Should have 2 pairs
         self.assertEqual(len(structure.pairs), 2)
@@ -846,11 +899,68 @@ Second -> Third'''
         self.assertFalse(structure.pairs[1].notation.is_start)
         
         # Verify the start notation properties
-        start_notation = structure.pairs[0].notation
-        self.assertEqual(start_notation.lhs, "First")
-        self.assertEqual(start_notation.rhs, "Second")
+        start_pair = structure.pairs[0]
+        self.assertEqual(start_pair.notation.lhs, "First")
+        self.assertEqual(start_pair.notation.rhs, "Second")
+        self.assertEqual(start_pair.state_class, "First")  # State class set from LHS
+        self.assertEqual(start_pair.source_nodes, [])  # Empty for start notation
+        
+        # Verify regular notation properties  
+        regular_pair = structure.pairs[1]
+        self.assertIsNone(regular_pair.state_class)  # No state class for regular notation
+        self.assertEqual(regular_pair.source_nodes, ["Second"])  # Normal source nodes
     
-    def test_classification_functionality(self):
+    def test_state_class_and_source_nodes(self):
+        """Test that state_class is set correctly and source_nodes are empty for start notation"""
+        content = '''"""Test graph"""
+# Comment for start notation
+MyStateClass -> start_node
+# Comment for regular transition
+start_node -> next_node'''
+        
+        structure = parse_graph_structure(content)
+        structure.auto_classify_pairs()
+        
+        # Should have 2 pairs
+        self.assertEqual(len(structure.pairs), 2)
+        
+        # First pair should be start notation with state class set and empty source nodes
+        start_pair = structure.pairs[0]
+        self.assertTrue(start_pair.notation.is_start)
+        self.assertEqual(start_pair.state_class, "MyStateClass")
+        self.assertEqual(start_pair.source_nodes, [])  # Empty for start notation
+        self.assertEqual(start_pair.notation.source_nodes, ["MyStateClass"])  # Notation still has original value
+        
+        # Second pair should be regular notation with no state class and normal source nodes
+        regular_pair = structure.pairs[1]
+        self.assertFalse(regular_pair.notation.is_start)
+        self.assertIsNone(regular_pair.state_class)
+        self.assertEqual(regular_pair.source_nodes, ["start_node"])  # Normal source nodes
+        self.assertEqual(regular_pair.notation.source_nodes, ["start_node"])  # Same as pair
+    
+    def test_conditional_edge_function_assignment(self):
+        """Test that conditional_edge_function gets set correctly during auto-classification"""
+        content = '''"""Test graph"""
+# Comment for conditional edge
+decision_node -> route_choice(path_a, path_b, path_c)
+# Comment for regular node
+A -> B'''
+        
+        structure = parse_graph_structure(content)
+        structure.auto_classify_pairs()
+        
+        # Should have 2 pairs
+        self.assertEqual(len(structure.pairs), 2)
+        
+        # First pair should be conditional edge with function set
+        conditional_pair = structure.pairs[0]
+        self.assertEqual(conditional_pair.classification, NotationClassification.NODE_TO_CONDITIONAL_EDGE)
+        self.assertEqual(conditional_pair.conditional_edge_function, "route_choice")
+        
+        # Second pair should be node-to-node with no conditional function
+        node_pair = structure.pairs[1]
+        self.assertEqual(node_pair.classification, NotationClassification.NODE_TO_NODE)
+        self.assertIsNone(node_pair.conditional_edge_function)
         """Test classification and analysis functionality"""
         content = '''"""Test graph"""
 # Comment 1
@@ -951,12 +1061,15 @@ if __name__ == "__main__":
                     print(f"   Comment: {repr(pair.comment.text)}")
                     print(f"   LHS: '{pair.notation.lhs}' | RHS: '{pair.notation.rhs}'")
                     print(f"   Is Start: {pair.notation.is_start}")
-                    print(f"   Source Nodes: {pair.notation.source_nodes}")
+                    print(f"   State Class: {pair.state_class}")
+                    print(f"   Source Nodes: {pair.source_nodes}")
                     print(f"   RHS Parameters: {pair.notation.rhs_parameters}")
                     print(f"   Is Worker: {pair.notation.is_worker}")
                     print(f"   Is Conditional Edge: {pair.notation.is_conditional_edge}")
                     print(f"   Worker Function: {pair.notation.worker_function}")
+                    print(f"   RHS Function: {pair.notation.rhs_function}")
                     print(f"   Classification: {pair.classification.value if pair.classification else None}")
+                    print(f"   Conditional Edge Function: {pair.conditional_edge_function}")
                     if pair.classification:
                         dest_nodes = pair.notation.dest_nodes(pair.classification)
                         print(f"   Destination Nodes: {dest_nodes}")
