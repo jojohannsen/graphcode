@@ -1,5 +1,11 @@
-State -> get_topic
-get_topic -> story, joke, poem
+"""
+# Parallelization
+This pattern runs 3 LLM calls in parallel, then consolidates the results.
+
+The graph is invoked with the topic, then we generate a story, joke, and poem in parallel, then aggregate them, and END.
+"""
+StoryJokePoem -> select_topic
+select_topic -> story, joke, poem
 # generate a story, joke, and poem based on topic
 story, joke, poem -> aggregator
 # combine the results and end

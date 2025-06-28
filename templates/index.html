@@ -110,17 +110,40 @@
         
         .file-item {
             padding: 8px 12px;
-            margin: 4px 0;
-            background-color: #252525;
+            margin: 4px 0 4px 20px;
+            background-color: #2a2a2a;
             border-radius: 4px;
             cursor: pointer;
-            transition: background-color 0.2s;
-            color: #b0b0b0;
+            transition: all 0.2s;
+            color: #666;
+            border-left: 3px solid #404040;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 13px;
+        }
+        
+        .file-item.has-folder {
+            color: #9cdcfe;
         }
         
         .file-item:hover {
             background-color: #353535;
             color: #ffffff;
+            border-left-color: #569cd6;
+        }
+        
+        .file-status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #666;
+            margin-left: 8px;
+            flex-shrink: 0;
+        }
+        
+        .file-status-indicator.has-artifacts {
+            background-color: #4caf50;
         }
         
         .graph-header-buttons {
@@ -1052,16 +1075,41 @@
                         contentDiv.appendChild(createFolderNode(subfolder, parentPath + folder.name + '/'));
                     });
                     // Add files
-                    (folder.files || []).forEach(filename => {
+                    (folder.files || []).forEach(async filename => {
                         const fileItem = document.createElement('div');
                         fileItem.className = 'file-item';
-                        fileItem.textContent = filename;
+                        
+                        // Remove .txt extension for display
+                        const displayName = filename.replace('.txt', '');
+                        
+                        // Create file content structure
+                        const fileContent = document.createElement('span');
+                        fileContent.textContent = displayName;
+                        
+                        const statusIndicator = document.createElement('div');
+                        statusIndicator.className = 'file-status-indicator';
+                        
+                        fileItem.appendChild(fileContent);
+                        fileItem.appendChild(statusIndicator);
+                        
+                        // Check if artifacts exist for this file
+                        const relPath = parentPath + folder.name + '/' + filename;
+                        const cleanPath = relPath.startsWith('graphs/') ? relPath.slice(7) : relPath;
+                        const graphName = cleanPath.replace('.txt', '');
+                        
+                        // Check for any generated artifacts
+                        try {
+                            const response = await fetch(`/api/check-file/${graphName}/state-spec.md`);
+                            if (response.ok) {
+                                statusIndicator.classList.add('has-artifacts');
+                                fileItem.classList.add('has-folder');
+                            }
+                        } catch (error) {
+                            // Silent fail for status check
+                        }
+                        
                         fileItem.addEventListener('click', () => {
-                            // Compose the full path relative to 'graphs/'
-                            let relPath = parentPath + folder.name + '/' + filename;
-                            // Remove leading 'graphs/' if present
-                            if (relPath.startsWith('graphs/')) relPath = relPath.slice(7);
-                            loadGraphFromFile(relPath);
+                            loadGraphFromFile(cleanPath);
                         });
                         contentDiv.appendChild(fileItem);
                     });
@@ -1078,10 +1126,37 @@
                 (data.folders || []).forEach(folder => {
                     fileList.appendChild(createFolderNode(folder));
                 });
-                (data.files || []).forEach(filename => {
+                (data.files || []).forEach(async filename => {
                     const fileItem = document.createElement('div');
                     fileItem.className = 'file-item';
-                    fileItem.textContent = filename;
+                    
+                    // Remove .txt extension for display
+                    const displayName = filename.replace('.txt', '');
+                    
+                    // Create file content structure
+                    const fileContent = document.createElement('span');
+                    fileContent.textContent = displayName;
+                    
+                    const statusIndicator = document.createElement('div');
+                    statusIndicator.className = 'file-status-indicator';
+                    
+                    fileItem.appendChild(fileContent);
+                    fileItem.appendChild(statusIndicator);
+                    
+                    // Check if artifacts exist for this file
+                    const graphName = filename.replace('.txt', '');
+                    
+                    // Check for any generated artifacts
+                    try {
+                        const response = await fetch(`/api/check-file/${graphName}/state-spec.md`);
+                        if (response.ok) {
+                            statusIndicator.classList.add('has-artifacts');
+                            fileItem.classList.add('has-folder');
+                        }
+                    } catch (error) {
+                        // Silent fail for status check
+                    }
+                    
                     fileItem.addEventListener('click', () => loadGraphFromFile(filename));
                     fileList.appendChild(fileItem);
                 });
@@ -1299,6 +1374,9 @@
                 // Store current file and content
                 currentLoadedFile = filename;
                 originalGraphContent = data.content;
+                
+                // Store README content if available
+                window.currentReadmeContent = data.readme || null;
                 
                 // Switch to graph display
                 document.getElementById('fileList').style.display = 'none';
@@ -2185,37 +2263,45 @@
         
         // Load and display graph overview
         async function loadGraphOverview(filename) {
-            try {
-                const response = await fetch(`/api/graph-overview/${filename}`);
-                const data = await response.json();
-                
-                if (data.error) {
-                    console.error('Error loading graph overview:', data.error);
-                    return;
+            const contentHeader = document.getElementById('contentHeader');
+            const contentBody = document.getElementById('contentBody');
+            
+            contentHeader.innerHTML = '<div class="graph-header-title"><span>README</span></div>';
+            contentHeader.className = 'graph-header';
+            
+            // Use extracted README content if available, otherwise fall back to overview
+            if (window.currentReadmeContent) {
+                // Display the extracted README content as markdown
+                contentBody.innerHTML = `<div class="markdown-content">${marked.parse(window.currentReadmeContent)}</div>`;
+            } else {
+                // Fall back to the dynamic overview if no README was extracted
+                try {
+                    const response = await fetch(`/api/graph-overview/${filename}`);
+                    const data = await response.json();
+                    
+                    if (data.error) {
+                        console.error('Error loading graph overview:', data.error);
+                        contentBody.innerHTML = '<div class="markdown-content"><h1>README</h1><p>No documentation available for this graph.</p></div>';
+                        return;
+                    }
+                    
+                    // Display the overview markdown
+                    contentBody.innerHTML = `<div class="markdown-content">${marked.parse(data.content)}</div>`;
+                    
+                } catch (error) {
+                    console.error('Error loading graph overview:', error);
+                    contentBody.innerHTML = '<div class="markdown-content"><h1>README</h1><p>Error loading documentation.</p></div>';
                 }
-                
-                // Update the third column with overview
-                const contentHeader = document.getElementById('contentHeader');
-                const contentBody = document.getElementById('contentBody');
-                
-                contentHeader.innerHTML = '<div class="graph-header-title"><span>README</span></div>';
-                contentHeader.className = 'graph-header';
-                
-                // Display the overview markdown
-                contentBody.innerHTML = `<div class="markdown-content">${marked.parse(data.content)}</div>`;
-                
-                // Hide delete button since this is not a deletable artifact
-                hideDeleteButton();
-                
-                // Ensure README button is active
-                document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
-                const readmeButton = document.querySelector('[data-file="readme"]');
-                if (readmeButton) {
-                    readmeButton.classList.add('active');
-                }
-                
-            } catch (error) {
-                console.error('Error loading graph overview:', error);
+            }
+            
+            // Hide delete button since this is not a deletable artifact
+            hideDeleteButton();
+            
+            // Ensure README button is active
+            document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+            const readmeButton = document.querySelector('[data-file="readme"]');
+            if (readmeButton) {
+                readmeButton.classList.add('active');
             }
         }
         

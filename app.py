@@ -41,6 +41,40 @@ def get_artifacts_base_dir():
     base_folder = get_base_folder()
     return Path(base_folder) if base_folder else Path(__file__).parent
 
+def extract_documentation(content):
+    """Extract triple-quoted documentation block and return (readme, graph_content)"""
+    lines = content.split('\n')
+    readme_content = ""
+    graph_start_index = 0
+    
+    # Look for triple-quoted block at the beginning
+    if lines and lines[0].strip().startswith('"""'):
+        in_doc_block = True
+        doc_lines = []
+        
+        # Skip the opening triple quotes line
+        for i, line in enumerate(lines[1:], 1):
+            if line.strip().endswith('"""'):
+                # Found closing triple quotes
+                in_doc_block = False
+                graph_start_index = i + 1
+                break
+            else:
+                doc_lines.append(line)
+        
+        if not in_doc_block:  # Successfully found complete doc block
+            readme_content = '\n'.join(doc_lines).strip()
+    
+    # Extract graph content (everything after documentation)
+    graph_lines = lines[graph_start_index:]
+    # Remove any leading empty lines
+    while graph_lines and not graph_lines[0].strip():
+        graph_lines.pop(0)
+    
+    graph_content = '\n'.join(graph_lines)
+    
+    return readme_content, graph_content
+
 # Sample graph content for display
 SAMPLE_GRAPH = """# This is the main state machine
 State -> initialization
@@ -120,7 +154,29 @@ def get_graph(filename):
 
         with open(file_path, 'r') as f:
             content = f.read()
-        return jsonify({'content': content, 'filename': filename})
+        
+        # Extract and process documentation block
+        readme_content, graph_content = extract_documentation(content)
+        
+        # Save README.md and cleaned graph if artifacts directory exists
+        if artifacts_base_dir:
+            # Save README.md if documentation was found
+            if readme_content:
+                readme_path = graph_folder_path / 'README.md'
+                if not readme_path.exists():
+                    readme_path.write_text(readme_content)
+            
+            # Save cleaned graph file
+            graph_filename = Path(graph_name).name + '.txt'
+            graph_file_path = graph_folder_path / graph_filename
+            if not graph_file_path.exists():
+                graph_file_path.write_text(graph_content)
+        
+        return jsonify({
+            'content': graph_content, 
+            'filename': filename,
+            'readme': readme_content
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -574,11 +630,6 @@ def check_file_exists(file_path):
     """Check if a file exists"""
     artifacts_base_dir = get_artifacts_base_dir()
     full_path = artifacts_base_dir / file_path
-    print(f"File check - file_path: {file_path}", flush=True)
-    print(f"File check - artifacts_base_dir: {artifacts_base_dir}", flush=True)
-    print(f"File check - full_path: {full_path}", flush=True)
-    print(f"File check - exists: {full_path.exists()}", flush=True)
-    print(f"File check - is_file: {full_path.is_file() if full_path.exists() else 'N/A'}", flush=True)
     
     if full_path.exists() and full_path.is_file():
         return jsonify({'exists': True}), 200
