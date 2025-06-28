@@ -1303,12 +1303,8 @@
             if (activeButtonKey && buttons[activeButtonKey] && !buttons[activeButtonKey].classList.contains('disabled')) {
                 // Use the specified active button - don't auto-load content as it should already be displayed
                 buttons[activeButtonKey].classList.add('active');
-            } else if (existingFiles.state_spec) {
-                buttons.state_spec.classList.add('active');
-                // Load the existing state spec content only if no specific button was requested
-                const fileNameWithoutExt = currentLoadedFile.replace('.txt', '');
-                displayExistingFile(`${fileNameWithoutExt}/state-spec.md`, true);
             } else {
+                // Always default to README when first loading a graph
                 buttons.readme.classList.add('active');
             }
             
@@ -2139,12 +2135,18 @@
         
         // Show delete button
         function showDeleteButton() {
-            document.getElementById('deleteButton').classList.add('visible');
+            const deleteButton = document.getElementById('deleteButton');
+            if (deleteButton) {
+                deleteButton.classList.add('visible');
+            }
         }
         
         // Hide delete button
         function hideDeleteButton() {
-            document.getElementById('deleteButton').classList.remove('visible');
+            const deleteButton = document.getElementById('deleteButton');
+            if (deleteButton) {
+                deleteButton.classList.remove('visible');
+            }
             currentDisplayedArtifact = null;
         }
         
@@ -2277,6 +2279,13 @@
                 // Fall back to the dynamic overview if no README was extracted
                 try {
                     const response = await fetch(`/api/graph-overview/${filename}`);
+                    
+                    if (!response.ok) {
+                        // If overview endpoint doesn't exist, show default message
+                        contentBody.innerHTML = '<div class="markdown-content"><h1>README</h1><p>No documentation available for this graph.</p></div>';
+                        return;
+                    }
+                    
                     const data = await response.json();
                     
                     if (data.error) {
@@ -2290,7 +2299,7 @@
                     
                 } catch (error) {
                     console.error('Error loading graph overview:', error);
-                    contentBody.innerHTML = '<div class="markdown-content"><h1>README</h1><p>Error loading documentation.</p></div>';
+                    contentBody.innerHTML = '<div class="markdown-content"><h1>README</h1><p>No documentation available for this graph.</p></div>';
                 }
             }
             
