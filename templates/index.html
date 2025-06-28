@@ -68,6 +68,16 @@
             gap: 12px;
         }
         
+        .graph-path {
+            color: #888;
+            font-weight: normal;
+        }
+        
+        .graph-filename {
+            font-weight: bold;
+            color: #e8e9eb;
+        }
+        
         .download-icon {
             background: none;
             border: none;
@@ -702,6 +712,35 @@
             color: #888;
             margin: 0 0 8px 0;
         }
+        
+        /* Add minimal CSS for folder-item and folder-header */
+        /* Place after .file-item styles */
+        .folder-item {
+            margin-bottom: 4px;
+        }
+        .folder-header {
+            font-weight: bold;
+            color: #b0b0b0;
+            padding: 6px 8px;
+            border-radius: 4px;
+            background-color: #232323;
+            transition: background-color 0.2s;
+        }
+        .folder-header:hover {
+            background-color: #353535;
+            color: #ffffff;
+        }
+        .folder-arrow {
+            font-size: 12px;
+            display: inline-block;
+            width: 16px;
+            text-align: center;
+        }
+        .folder-content {
+            margin-left: 12px;
+            border-left: 1px solid #222;
+            padding-left: 8px;
+        }
     </style>
 </head>
 <body>
@@ -972,22 +1011,74 @@
             highlight.scrollLeft = editor.scrollLeft;
         }
         
-        // Load and display txt files
+        // Load and display txt files (now supports nested folders)
         async function loadTxtFiles() {
             try {
                 const response = await fetch('/api/txt-files');
                 const data = await response.json();
                 const fileList = document.getElementById('fileList');
-                
                 fileList.innerHTML = '';
-                
-                if (data.files.length === 0) {
-                    fileList.innerHTML = '<div style="color: #666; text-align: center; padding: 20px;">No .txt files found in the current directory</div>';
+
+                function createFolderNode(folder, parentPath = '') {
+                    const folderDiv = document.createElement('div');
+                    folderDiv.className = 'folder-item';
+                    folderDiv.style.marginLeft = parentPath ? '16px' : '0';
+
+                    // Folder header
+                    const header = document.createElement('div');
+                    header.className = 'folder-header';
+                    header.style.cursor = 'pointer';
+                    header.style.display = 'flex';
+                    header.style.alignItems = 'center';
+                    header.style.gap = '6px';
+                    header.innerHTML = `<span class="folder-arrow">▶</span> <span>${folder.name}</span>`;
+                    folderDiv.appendChild(header);
+
+                    // Folder content (hidden by default)
+                    const contentDiv = document.createElement('div');
+                    contentDiv.className = 'folder-content';
+                    contentDiv.style.display = 'none';
+                    folderDiv.appendChild(contentDiv);
+
+                    // Toggle expand/collapse
+                    header.addEventListener('click', () => {
+                        const isOpen = contentDiv.style.display === 'block';
+                        contentDiv.style.display = isOpen ? 'none' : 'block';
+                        header.querySelector('.folder-arrow').textContent = isOpen ? '▶' : '▼';
+                    });
+
+                    // Add subfolders
+                    (folder.folders || []).forEach(subfolder => {
+                        contentDiv.appendChild(createFolderNode(subfolder, parentPath + folder.name + '/'));
+                    });
+                    // Add files
+                    (folder.files || []).forEach(filename => {
+                        const fileItem = document.createElement('div');
+                        fileItem.className = 'file-item';
+                        fileItem.textContent = filename;
+                        fileItem.addEventListener('click', () => {
+                            // Compose the full path relative to 'graphs/'
+                            let relPath = parentPath + folder.name + '/' + filename;
+                            // Remove leading 'graphs/' if present
+                            if (relPath.startsWith('graphs/')) relPath = relPath.slice(7);
+                            loadGraphFromFile(relPath);
+                        });
+                        contentDiv.appendChild(fileItem);
+                    });
+                    return folderDiv;
+                }
+
+                // If no .txt files at all
+                if ((data.files.length === 0) && (!data.folders || data.folders.length === 0)) {
+                    fileList.innerHTML = '<div style="color: #666; text-align: center; padding: 20px;">No .txt files found in the graphs directory</div>';
                     return;
                 }
-                
-                // Sort files alphabetically before displaying
-                data.files.sort().forEach(filename => {
+
+                // Render top-level folders and files
+                (data.folders || []).forEach(folder => {
+                    fileList.appendChild(createFolderNode(folder));
+                });
+                (data.files || []).forEach(filename => {
                     const fileItem = document.createElement('div');
                     fileItem.className = 'file-item';
                     fileItem.textContent = filename;
@@ -1216,7 +1307,18 @@
                 
                 // Show header with filename
                 const fileNameWithoutExt = filename.replace('.txt', '');
-                document.getElementById('selectedFileName').textContent = fileNameWithoutExt;
+                const selectedFileNameElement = document.getElementById('selectedFileName');
+                
+                // Split the path and format with different styles
+                if (fileNameWithoutExt.includes('/')) {
+                    const pathParts = fileNameWithoutExt.split('/');
+                    const fileName = pathParts.pop();
+                    const pathPrefix = pathParts.join('/') + '/';
+                    selectedFileNameElement.innerHTML = `<span class="graph-path">${pathPrefix}</span><span class="graph-filename">${fileName}</span>`;
+                } else {
+                    selectedFileNameElement.innerHTML = `<span class="graph-filename">${fileNameWithoutExt}</span>`;
+                }
+                
                 document.getElementById('graphHeader').style.display = 'flex';
                 
                 // Check existing files and update button states
@@ -1387,7 +1489,18 @@
                 document.getElementById('graphsListHeader').style.display = 'none';
                 
                 // Show header with filename
-                document.getElementById('selectedFileName').textContent = filename;
+                const selectedFileNameElement = document.getElementById('selectedFileName');
+                
+                // Split the path and format with different styles
+                if (filename.includes('/')) {
+                    const pathParts = filename.split('/');
+                    const fileNamePart = pathParts.pop();
+                    const pathPrefix = pathParts.join('/') + '/';
+                    selectedFileNameElement.innerHTML = `<span class="graph-path">${pathPrefix}</span><span class="graph-filename">${fileNamePart}</span>`;
+                } else {
+                    selectedFileNameElement.innerHTML = `<span class="graph-filename">${filename}</span>`;
+                }
+                
                 document.getElementById('graphHeader').style.display = 'flex';
                 
                 // Enter edit mode immediately

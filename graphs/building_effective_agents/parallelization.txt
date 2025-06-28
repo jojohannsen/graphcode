@@ -1,5 +1,4 @@
-TextGenerationState -> get_topic
-# use human-in-the-loop to get the topic
+State -> get_topic
 get_topic -> story, joke, poem
 # generate a story, joke, and poem based on topic
 story, joke, poem -> aggregator

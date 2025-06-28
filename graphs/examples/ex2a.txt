@@ -1,0 +1,5 @@
+# this graph is invoked with a list of integers, a name, and an operation.
+# The operation can be either "*" or "+"
+Ex2aState -> make_message
+# This node makes a message that greets the person by name, and includes in that greeting something about the list of integers. If the operation is "*" we multiply the integers together, and that product is part of the output message.   If the operation is "+" we add the integers together and the sum is part of the output message.
+make_message -> END

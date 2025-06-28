@@ -1,0 +1,4 @@
+# state has a list of ints, and a name field.  It is invoked with these.
+Ex2State -> gen_result
+# the result is a string the says hi to name, and sums the values in the list
+gen_result -> END

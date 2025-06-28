@@ -1,0 +1,6 @@
+# state holds list of messages, and is invoked with an initial HumanMessage
+ScoutState -> assistant_node
+# the assistant node invokes model with the messages, the response might have involve tools in which case, we go to tools node, otherwise we go to end
+assistant_node -> assistant_router(tools, END)
+# the tools node is using built in tools
+tools -> assistant_node

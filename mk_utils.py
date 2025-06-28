@@ -213,7 +213,9 @@ def get_config(base_folder, graph_name):
     # Path to graph-specific YAML file
     graph_dir = expanded_base_folder / graph_name
     graph_dir.mkdir(parents=True, exist_ok=True)
-    path_to_yaml = graph_dir / f"{graph_name}.yaml"
+    # Get just the filename part for the YAML file
+    yaml_filename = Path(graph_name).name
+    path_to_yaml = graph_dir / f"{yaml_filename}.yaml"
     
     print(f"PATH_TO_YAML: {path_to_yaml}", flush=True)
     
@@ -260,7 +262,18 @@ def read_file_and_get_subdir(file_path):
         if not pseudo_code or len(pseudo_code) < 10:
             print(f"Error: pseudo_code missing from file")
             sys.exit(1)
-        subdir = file_path.split("/")[-1].split(".")[0]
+        # Extract subdir preserving folder structure relative to graphs directory
+        # Example: "graphs/building_effective_agents/evaluator_optimizer.txt" -> "building_effective_agents/evaluator_optimizer"
+        path_obj = Path(file_path)
+        if 'graphs' in path_obj.parts:
+            # Find the index of 'graphs' in the path parts
+            graphs_index = path_obj.parts.index('graphs')
+            # Get all parts after 'graphs' and join them, then remove .txt extension
+            relative_parts = path_obj.parts[graphs_index + 1:]
+            subdir = str(Path(*relative_parts).with_suffix(''))
+        else:
+            # Fallback to just filename without extension
+            subdir = path_obj.stem
         return subdir, pseudo_code
     except Exception as e:
         print(f"Error reading the file: {e}")

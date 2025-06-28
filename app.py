@@ -69,18 +69,33 @@ def index():
 
 @app.route('/api/txt-files')
 def list_txt_files():
-    """Return list of txt files in current directory"""
-    txt_files = glob.glob('*.txt')
-    return jsonify({'files': txt_files})
+    """Return a nested structure of .txt files in the 'graphs' directory and its subfolders"""
+    def walk_dir(path):
+        folders = []
+        files = []
+        for entry in sorted(os.listdir(path)):
+            full_path = os.path.join(path, entry)
+            if os.path.isdir(full_path):
+                folders.append(walk_dir(full_path) | {"name": entry})
+            elif entry.endswith('.txt'):
+                files.append(entry)
+        return {"folders": folders, "files": files}
 
-@app.route('/api/graph/<filename>')
+    base_path = os.path.join(os.path.dirname(__file__), 'graphs')
+    tree = walk_dir(base_path)
+    return jsonify(tree)
+
+@app.route('/api/graph/<path:filename>')
 def get_graph(filename):
-    """Return the graph definition from a txt file"""
-    file_path = BASE_DIR / f"{filename}.txt" if not filename.endswith('.txt') else BASE_DIR / filename
-    
+    """Return the graph definition from a txt file in the graphs directory or subfolders"""
+    base_graphs = Path(__file__).parent / "graphs"
+    file_path = base_graphs / filename
     if not file_path.exists():
-        return jsonify({'error': 'File not found'}), 404
-    
+        # fallback: try with .txt extension if not present
+        if not str(file_path).endswith('.txt') and (file_path.with_suffix('.txt')).exists():
+            file_path = file_path.with_suffix('.txt')
+        else:
+            return jsonify({'error': 'File not found'}), 404
     try:
         def copy_if_needed(src, dest):
             if src.exists() and not dest.exists():
@@ -88,13 +103,15 @@ def get_graph(filename):
 
         artifacts_base_dir = get_artifacts_base_dir()
         if artifacts_base_dir:
-            graph_name = filename.replace('.txt', '')
+            graph_name = filename[:-4] if filename.endswith('.txt') else filename
             graph_folder_path = artifacts_base_dir / graph_name
             graph_folder_path.mkdir(parents=True, exist_ok=True)
 
             # Copy default.yaml
             default_yaml_path = BASE_DIR / 'default.yaml'
-            new_yaml_path = graph_folder_path / f"{graph_name}.yaml"
+            # Extract just the filename part for the YAML file
+            yaml_filename = Path(graph_name).name
+            new_yaml_path = graph_folder_path / f"{yaml_filename}.yaml"
             copy_if_needed(default_yaml_path, new_yaml_path)
 
             # Copy human_input.py and llm_cache.py
@@ -271,19 +288,19 @@ def generate_state_spec_endpoint():
             print("ERROR: No filename provided", flush=True)
             return jsonify({'error': 'No filename provided'}), 400
         
-        # Read the graph file
-        file_path = BASE_DIR / filename
-        print(f"Looking for file at: {file_path}", flush=True)
-        if not file_path.exists():
+        # Read the graph file from graphs/ directory
+        graph_file_path = Path(__file__).parent / 'graphs' / filename
+        print(f"Looking for file at: {graph_file_path}", flush=True)
+        if not graph_file_path.exists():
             print("ERROR: File not found", flush=True)
             return jsonify({'error': 'File not found'}), 404
         
-        with open(file_path, 'r') as f:
+        with open(graph_file_path, 'r') as f:
             graph_spec = f.read()
         print(f"Successfully read graph spec ({len(graph_spec)} characters)", flush=True)
         
-        # Extract graph name (filename without .txt)
-        graph_name = filename.replace('.txt', '')
+        # Extract graph name preserving folder structure (remove .txt extension)
+        graph_name = filename[:-4] if filename.endswith('.txt') else filename
         print(f"Graph name: {graph_name}", flush=True)
         
         # Generate state spec
@@ -320,19 +337,19 @@ def generate_state_code_endpoint():
             print("ERROR: No filename provided", flush=True)
             return jsonify({'error': 'No filename provided'}), 400
         
-        # Read the graph file
-        file_path = BASE_DIR / filename
-        print(f"Looking for file at: {file_path}", flush=True)
-        if not file_path.exists():
+        # Read the graph file from graphs/ directory
+        graph_file_path = Path(__file__).parent / 'graphs' / filename
+        print(f"Looking for file at: {graph_file_path}", flush=True)
+        if not graph_file_path.exists():
             print("ERROR: File not found", flush=True)
             return jsonify({'error': 'File not found'}), 404
         
-        with open(file_path, 'r') as f:
+        with open(graph_file_path, 'r') as f:
             graph_spec = f.read()
         print(f"Successfully read graph spec ({len(graph_spec)} characters)", flush=True)
         
-        # Extract graph name (filename without .txt)
-        graph_name = filename.replace('.txt', '')
+        # Extract graph name preserving folder structure (remove .txt extension)
+        graph_name = filename[:-4] if filename.endswith('.txt') else filename
         print(f"Graph name: {graph_name}", flush=True)
         
         # Generate state code
@@ -369,19 +386,19 @@ def generate_node_spec_endpoint():
             print("ERROR: No filename provided", flush=True)
             return jsonify({'error': 'No filename provided'}), 400
         
-        # Read the graph file
-        file_path = BASE_DIR / filename
-        print(f"Looking for file at: {file_path}", flush=True)
-        if not file_path.exists():
+        # Read the graph file from graphs/ directory
+        graph_file_path = Path(__file__).parent / 'graphs' / filename
+        print(f"Looking for file at: {graph_file_path}", flush=True)
+        if not graph_file_path.exists():
             print("ERROR: File not found", flush=True)
             return jsonify({'error': 'File not found'}), 404
         
-        with open(file_path, 'r') as f:
+        with open(graph_file_path, 'r') as f:
             graph_spec = f.read()
         print(f"Successfully read graph spec ({len(graph_spec)} characters)", flush=True)
         
-        # Extract graph name (filename without .txt)
-        graph_name = filename.replace('.txt', '')
+        # Extract graph name preserving folder structure (remove .txt extension)
+        graph_name = filename[:-4] if filename.endswith('.txt') else filename
         print(f"Graph name: {graph_name}", flush=True)
         
         # Generate node spec
@@ -418,19 +435,19 @@ def generate_node_code_endpoint():
             print("ERROR: No filename provided", flush=True)
             return jsonify({'error': 'No filename provided'}), 400
         
-        # Read the graph file
-        file_path = BASE_DIR / filename
-        print(f"Looking for file at: {file_path}", flush=True)
-        if not file_path.exists():
+        # Read the graph file from graphs/ directory
+        graph_file_path = Path(__file__).parent / 'graphs' / filename
+        print(f"Looking for file at: {graph_file_path}", flush=True)
+        if not graph_file_path.exists():
             print("ERROR: File not found", flush=True)
             return jsonify({'error': 'File not found'}), 404
         
-        with open(file_path, 'r') as f:
+        with open(graph_file_path, 'r') as f:
             graph_spec = f.read()
         print(f"Successfully read graph spec ({len(graph_spec)} characters)", flush=True)
         
-        # Extract graph name (filename without .txt)
-        graph_name = filename.replace('.txt', '')
+        # Extract graph name preserving folder structure (remove .txt extension)
+        graph_name = filename[:-4] if filename.endswith('.txt') else filename
         print(f"Graph name: {graph_name}", flush=True)
         
         # Generate node code
@@ -467,19 +484,19 @@ def generate_graph_code_endpoint():
             print("ERROR: No filename provided", flush=True)
             return jsonify({'error': 'No filename provided'}), 400
         
-        # Read the graph file
-        file_path = BASE_DIR / filename
-        print(f"Looking for file at: {file_path}", flush=True)
-        if not file_path.exists():
+        # Read the graph file from graphs/ directory
+        graph_file_path = Path(__file__).parent / 'graphs' / filename
+        print(f"Looking for file at: {graph_file_path}", flush=True)
+        if not graph_file_path.exists():
             print("ERROR: File not found", flush=True)
             return jsonify({'error': 'File not found'}), 404
         
-        with open(file_path, 'r') as f:
+        with open(graph_file_path, 'r') as f:
             graph_spec = f.read()
         print(f"Successfully read graph spec ({len(graph_spec)} characters)", flush=True)
         
-        # Extract graph name (filename without .txt)
-        graph_name = filename.replace('.txt', '')
+        # Extract graph name preserving folder structure (remove .txt extension)
+        graph_name = filename[:-4] if filename.endswith('.txt') else filename
         print(f"Graph name: {graph_name}", flush=True)
         
         # Generate graph code
@@ -516,19 +533,19 @@ def generate_main_endpoint():
             print("ERROR: No filename provided", flush=True)
             return jsonify({'error': 'No filename provided'}), 400
         
-        # Read the graph file
-        file_path = BASE_DIR / filename
-        print(f"Looking for file at: {file_path}", flush=True)
-        if not file_path.exists():
+        # Read the graph file from graphs/ directory
+        graph_file_path = Path(__file__).parent / 'graphs' / filename
+        print(f"Looking for file at: {graph_file_path}", flush=True)
+        if not graph_file_path.exists():
             print("ERROR: File not found", flush=True)
             return jsonify({'error': 'File not found'}), 404
         
-        with open(file_path, 'r') as f:
+        with open(graph_file_path, 'r') as f:
             graph_spec = f.read()
         print(f"Successfully read graph spec ({len(graph_spec)} characters)", flush=True)
         
-        # Extract graph name (filename without .txt)
-        graph_name = filename.replace('.txt', '')
+        # Extract graph name preserving folder structure (remove .txt extension)
+        graph_name = filename[:-4] if filename.endswith('.txt') else filename
         print(f"Graph name: {graph_name}", flush=True)
         
         # Generate main code
@@ -557,6 +574,12 @@ def check_file_exists(file_path):
     """Check if a file exists"""
     artifacts_base_dir = get_artifacts_base_dir()
     full_path = artifacts_base_dir / file_path
+    print(f"File check - file_path: {file_path}", flush=True)
+    print(f"File check - artifacts_base_dir: {artifacts_base_dir}", flush=True)
+    print(f"File check - full_path: {full_path}", flush=True)
+    print(f"File check - exists: {full_path.exists()}", flush=True)
+    print(f"File check - is_file: {full_path.is_file() if full_path.exists() else 'N/A'}", flush=True)
+    
     if full_path.exists() and full_path.is_file():
         return jsonify({'exists': True}), 200
     else:
@@ -619,16 +642,16 @@ def save_file(file_path):
 def download_zip(filename):
     """Create and download a zip file containing all artifacts and graph specification"""
     try:
-        # Extract graph name (filename without .txt)
-        graph_name = filename.replace('.txt', '')
+        # Extract graph name preserving folder structure (remove .txt extension)
+        graph_name = filename[:-4] if filename.endswith('.txt') else filename
         artifacts_base_dir = get_artifacts_base_dir()
 
         # Create zip file in memory
         zip_buffer = io.BytesIO()
         
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-            # Add the original graph specification file from the project root
-            graph_file_path = BASE_DIR / filename
+            # Add the original graph specification file from graphs directory
+            graph_file_path = BASE_DIR / 'graphs' / filename
             if graph_file_path.exists():
                 zip_file.write(graph_file_path, f"{graph_name}/{filename}")
             
@@ -671,8 +694,8 @@ def download_zip(filename):
 def get_graph_overview(filename):
     """Get the graph overview with current artifact status"""
     try:
-        # Extract graph name (filename without .txt)
-        graph_name = filename.replace('.txt', '')
+        # Extract graph name preserving folder structure (remove .txt extension)
+        graph_name = filename[:-4] if filename.endswith('.txt') else filename
         artifacts_base_dir = get_artifacts_base_dir()
         
         # Read the overview template
