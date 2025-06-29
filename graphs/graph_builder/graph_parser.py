@@ -2,6 +2,8 @@ import unittest
 from typing import List, Tuple, Optional
 from enum import Enum
 
+# Note: llm_cache module is imported in main() when LLM features are used
+
 class GraphPrimitive:
     """Base class for graph primitives"""
     pass
@@ -174,9 +176,8 @@ class CommentNotationPair:
         self.classification: Optional[NotationClassification] = None
         self.state_class: Optional[str] = None
         self.conditional_edge_function: Optional[str] = None
+        self.conditional_edge_reasoning: Optional[str] = None
         self.implied_state_fields: List[str] = []
-        self.implied_source_nodes: List[str] = []
-        self.implied_destination_nodes: List[str] = []
         self.errors: List[str] = []
         self.clarifications_needed: List[str] = []
     
@@ -200,7 +201,8 @@ class CommentNotationPair:
 class GraphStructure:
     """Higher-level representation of parsed graph with README and comment-notation pairs"""
     
-    def __init__(self, primitives: List[GraphPrimitive]):
+    def __init__(self, primitives: List[GraphPrimitive], llm=None):
+        self.llm = llm
         self.readme = self._extract_readme(primitives)
         self.pairs = self._create_pairs(primitives)
     
@@ -268,8 +270,55 @@ class GraphStructure:
         """Return pairs that haven't been classified yet"""
         return [pair for pair in self.pairs if pair.classification is None]
     
+    def _generate_implied_state_fields(self, pair: CommentNotationPair) -> List[str]:
+        """
+        Generate implied state fields using AI prompt (placeholder implementation)
+        
+        TODO: Replace with actual AI/LLM call that includes:
+        - Graph notation specification
+        - Graph README (self.readme)
+        - Current pair comments (pair.comment.text)
+        - Current pair notation (pair.notation.line)
+        """
+        # Placeholder logic based on notation content
+        fields = []
+        
+        # Extract potential field names from comment and notation
+        comment_words = pair.comment.text.lower().split()
+        notation_line = pair.notation.line.lower()
+        
+        # Look for common state field indicators
+        field_indicators = ['state', 'data', 'input', 'output', 'result', 'content', 'message', 'status']
+        for indicator in field_indicators:
+            if indicator in comment_words or indicator in notation_line:
+                fields.append(f"{indicator}_field")
+        
+        # Default field based on source/dest nodes
+        if pair.source_nodes:
+            fields.append(f"{pair.source_nodes[0]}_data")
+        
+        return fields[:3]  # Limit to 3 fields for now
+    
+    def _generate_conditional_edge_reasoning(self, pair: CommentNotationPair) -> str:
+        """
+        Generate conditional edge reasoning using AI prompt (placeholder implementation)
+        
+        TODO: Replace with actual AI/LLM call that includes:
+        - Graph notation specification  
+        - Graph README (self.readme)
+        - Current pair comments (pair.comment.text)
+        - Current pair notation (pair.notation.line)
+        """
+        function_name = pair.conditional_edge_function or "unknown"
+        options = pair.notation.rhs_parameters
+        
+        return (f"The {function_name} function evaluates conditions based on the current state "
+                f"and routes to one of {len(options)} possible destinations: {', '.join(options)}. "
+                f"The routing decision is made by examining state fields and applying business logic "
+                f"as described in the comment: '{pair.comment.text}'")
+    
     def auto_classify_pairs(self):
-        """Automatically classify all unclassified pairs based on notation properties"""
+        """Automatically classify all unclassified pairs and populate analysis fields"""
         for pair in self.pairs:
             if pair.classification is None:
                 notation = pair.notation
@@ -278,6 +327,7 @@ class GraphStructure:
                 if notation.is_start:
                     pair.state_class = notation.lhs
                 
+                # Classify the notation
                 if notation.is_worker:
                     pair.classification = NotationClassification.NODE_TO_WORKER
                 elif notation.is_conditional_edge:
@@ -288,6 +338,13 @@ class GraphStructure:
                     pair.classification = NotationClassification.NODE_TO_PARALLEL_NODES
                 else:
                     pair.classification = NotationClassification.NODE_TO_NODE
+                
+                # Generate implied state fields using AI prompt
+                pair.implied_state_fields = self._generate_implied_state_fields(pair)
+                
+                # Generate conditional edge reasoning if needed
+                if pair.classification == NotationClassification.NODE_TO_CONDITIONAL_EDGE:
+                    pair.conditional_edge_reasoning = self._generate_conditional_edge_reasoning(pair)
     
     def __repr__(self):
         return f"GraphStructure(readme_length={len(self.readme)}, pairs={len(self.pairs)})"
@@ -438,18 +495,19 @@ def parse_graph_notation(graph_text):
     parser = GraphParser()
     return parser.parse(graph_text)
 
-def parse_graph_structure(graph_text):
+def parse_graph_structure(graph_text, llm=None):
     """
     Parse graph notation text and return a higher-level GraphStructure object
     
     Args:
         graph_text (str): The graph notation text to parse
+        llm: Optional LLM instance for AI-powered analysis
         
     Returns:
         GraphStructure: Object with README and comment-notation pairs
     """
     parser = parse_graph_notation(graph_text)
-    return GraphStructure(parser.primitives)
+    return GraphStructure(parser.primitives, llm=llm)
 
 # Test datasets for GraphNotation properties
 NOTATION_PROPERTY_DATASETS = [
@@ -808,7 +866,7 @@ class TestGraphParser(unittest.TestCase):
         for dataset in STRUCTURE_TEST_DATASETS:
             with self.subTest(dataset=dataset["name"]):
                 # Parse the structure
-                structure = parse_graph_structure(dataset["content"])
+                structure = parse_graph_structure(dataset["content"], llm=None)
                 
                 # Check README matches
                 self.assertEqual(
@@ -888,7 +946,7 @@ First -> Second
 # Comment 2  
 Second -> Third'''
         
-        structure = parse_graph_structure(content)
+        structure = parse_graph_structure(content, llm=None)
         structure.auto_classify_pairs()
         
         # Should have 2 pairs
@@ -909,6 +967,46 @@ Second -> Third'''
         regular_pair = structure.pairs[1]
         self.assertIsNone(regular_pair.state_class)  # No state class for regular notation
         self.assertEqual(regular_pair.source_nodes, ["Second"])  # Normal source nodes
+    
+    def test_implied_fields_population(self):
+        """Test that implied fields are populated during auto-classification"""
+        content = '''"""Test graph for state management"""
+# Initialize the processing state with input data
+StateClass -> process_input
+# Route based on input type and validation results
+process_input -> route_decision(valid_path, error_path, retry_path)
+# Handle successful processing
+valid_path -> complete'''
+        
+        structure = parse_graph_structure(content)
+        structure.auto_classify_pairs()
+        
+        # Should have 3 pairs
+        self.assertEqual(len(structure.pairs), 3)
+        
+        # Test first pair (start notation)
+        start_pair = structure.pairs[0]
+        self.assertEqual(start_pair.implied_source_nodes, [])  # Empty for start
+        self.assertEqual(start_pair.implied_destination_nodes, ["process_input"])
+        self.assertTrue(len(start_pair.implied_state_fields) > 0)  # Should have generated fields
+        self.assertIsNone(start_pair.conditional_edge_reasoning)  # Not a conditional edge
+        
+        # Test second pair (conditional edge)
+        conditional_pair = structure.pairs[1]
+        self.assertEqual(conditional_pair.classification, NotationClassification.NODE_TO_CONDITIONAL_EDGE)
+        self.assertEqual(conditional_pair.implied_source_nodes, ["process_input"])
+        self.assertEqual(conditional_pair.implied_destination_nodes, ["valid_path", "error_path", "retry_path"])
+        self.assertTrue(len(conditional_pair.implied_state_fields) > 0)
+        self.assertIsNotNone(conditional_pair.conditional_edge_reasoning)  # Should have reasoning
+        self.assertIn("route_decision", conditional_pair.conditional_edge_reasoning)
+        
+        # Test third pair (regular node)
+        regular_pair = structure.pairs[2]
+        self.assertEqual(regular_pair.classification, NotationClassification.NODE_TO_NODE)
+        self.assertEqual(regular_pair.implied_source_nodes, ["valid_path"])
+        self.assertEqual(regular_pair.implied_destination_nodes, ["complete"])
+        self.assertTrue(len(regular_pair.implied_state_fields) > 0)
+        self.assertIsNone(regular_pair.conditional_edge_reasoning)  # Not a conditional edge
     
     def test_state_class_and_source_nodes(self):
         """Test that state_class is set correctly and source_nodes are empty for start notation"""
@@ -1029,20 +1127,40 @@ if __name__ == "__main__":
     parser.add_argument('--test', action='store_true', help='Run tests instead of parsing a file')
     parser.add_argument('--structure', action='store_true', help='Show high-level structure analysis instead of primitives')
     
+    # LLM configuration arguments
+    parser.add_argument('--llm-provider', choices=['openai', 'anthropic', 'openrouter'], 
+                       help='LLM provider for AI analysis')
+    parser.add_argument('--llm-model', help='LLM model name (e.g., gpt-4, claude-3-sonnet-20240229)')
+    parser.add_argument('--llm-cache', choices=['file', 'sqlite'], default='file',
+                       help='LLM cache type (default: file)')
+    
     args = parser.parse_args()
     
     if args.test:
         # Run tests
         unittest.main(argv=[''], exit=False, verbosity=2)
     elif args.filepath:
+        # Set up LLM if requested
+        llm = None
+        if args.llm_provider and args.llm_model:
+            try:
+                # Import the LLM cache module
+                from llm_cache import make_llm
+                llm = make_llm(args.llm_provider, args.llm_model, args.llm_cache)
+                print(f"Using LLM: {args.llm_provider}/{args.llm_model} with {args.llm_cache} cache")
+            except ImportError:
+                print("Warning: llm_cache module not found. AI analysis will use placeholder logic.")
+            except Exception as e:
+                print(f"Warning: Failed to initialize LLM: {e}. AI analysis will use placeholder logic.")
+        
         try:
             # Read the file content
             with open(args.filepath, 'r', encoding='utf-8') as file:
                 graph_text = file.read()
             
             if args.structure:
-                # Parse and show structure
-                structure = parse_graph_structure(graph_text)
+                # Parse and show structure with optional LLM
+                structure = parse_graph_structure(graph_text, llm=llm)
                 
                 # Auto-classify all pairs before displaying
                 structure.auto_classify_pairs()
@@ -1073,12 +1191,12 @@ if __name__ == "__main__":
                     if pair.classification:
                         dest_nodes = pair.notation.dest_nodes(pair.classification)
                         print(f"   Destination Nodes: {dest_nodes}")
-                    if pair.implied_state_fields:
-                        print(f"   State Fields: {pair.implied_state_fields}")
-                    if pair.implied_source_nodes:
-                        print(f"   Implied Source Nodes: {pair.implied_source_nodes}")
-                    if pair.implied_destination_nodes:
-                        print(f"   Implied Destination Nodes: {pair.implied_destination_nodes}")
+                    
+                    # Analysis fields
+                    print(f"   Implied State Fields: {pair.implied_state_fields}")
+                    if pair.conditional_edge_reasoning:
+                        print(f"   Conditional Edge Reasoning: {pair.conditional_edge_reasoning}")
+                    
                     if pair.errors:
                         print(f"   Errors: {pair.errors}")
                     if pair.clarifications_needed:
