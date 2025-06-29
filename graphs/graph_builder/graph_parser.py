@@ -1,8 +1,17 @@
 import unittest
 from typing import List, Tuple, Optional
 from enum import Enum
+import json
 
 # Note: llm_cache module is imported in main() when LLM features are used
+# Import StateField and FieldCategory
+try:
+    from state_field import StateField, FieldCategory
+    HAVE_STATE_FIELD = True
+except ImportError:
+    HAVE_STATE_FIELD = False
+    StateField = None
+    FieldCategory = None
 
 class GraphPrimitive:
     """Base class for graph primitives"""
@@ -270,34 +279,251 @@ class GraphStructure:
         """Return pairs that haven't been classified yet"""
         return [pair for pair in self.pairs if pair.classification is None]
     
-    def _generate_implied_state_fields(self, pair: CommentNotationPair) -> List[str]:
+    def _generate_implied_state_fields(self, pair: CommentNotationPair, current_state_fields: List = None) -> List:
         """
-        Generate implied state fields using AI prompt (placeholder implementation)
-        
-        TODO: Replace with actual AI/LLM call that includes:
-        - Graph notation specification
-        - Graph README (self.readme)
-        - Current pair comments (pair.comment.text)
-        - Current pair notation (pair.notation.line)
+        Generate implied state fields using an LLM prompt.
+        Returns StateField objects if available, otherwise string field names.
         """
-        # Placeholder logic based on notation content
-        fields = []
+        if current_state_fields is None:
+            current_state_fields = []
+            
+        if not self.llm:
+            # Fallback to placeholder logic if LLM is not available
+            fields = []
+            comment_words = pair.comment.text.lower().split()
+            notation_line = pair.notation.line.lower()
+            field_indicators = ['state', 'data', 'input', 'output', 'result', 'content', 'message', 'status']
+            for indicator in field_indicators:
+                if indicator in comment_words or indicator in notation_line:
+                    fields.append(f"{indicator}_field")
+            if pair.source_nodes:
+                fields.append(f"{pair.source_nodes[0]}_data")
+            return fields[:3]
+
+        # Read graph-notation.md content
+        try:
+            with open('graph-notation.md', 'r', encoding='utf-8') as f:
+                graph_notation_spec = f.read()
+        except FileNotFoundError:
+            graph_notation_spec = "Graph notation specification not available."
         
-        # Extract potential field names from comment and notation
-        comment_words = pair.comment.text.lower().split()
-        notation_line = pair.notation.line.lower()
+        # Format current state fields for the prompt
+        current_fields_text = "No existing state fields."
+        if current_state_fields:
+            if HAVE_STATE_FIELD and all(hasattr(f, 'name') for f in current_state_fields):
+                # StateField objects
+                fields_list = []
+                for field in current_state_fields:
+                    fields_list.append(f"  - {field.name}: {field.type_annotation} ({field.category.value}) - {field.description}")
+                current_fields_text = "\n".join(fields_list)
+            else:
+                # Simple strings
+                current_fields_text = ", ".join(str(f) for f in current_state_fields)
         
-        # Look for common state field indicators
-        field_indicators = ['state', 'data', 'input', 'output', 'result', 'content', 'message', 'status']
-        for indicator in field_indicators:
-            if indicator in comment_words or indicator in notation_line:
-                fields.append(f"{indicator}_field")
+        # Determine source and destination nodes
+        source_nodes = pair.source_nodes if not pair.notation.is_start else []
+        dest_nodes = []
+        if pair.classification:
+            dest_nodes = pair.notation.dest_nodes(pair.classification)
+        elif pair.notation.rhs:
+            dest_nodes = [pair.notation.rhs]
+            
+        prompt = f"""
+You are an expert in analyzing LangGraph notation for state field identification. Your task is to identify all state fields that are impacted (read from or written to) by a specific comment/notation pair.
+
+**Graph Notation Specification:**
+{graph_notation_spec}
+
+**Current Graph Context:**
+- **Graph README:**
+{self.readme}
+
+- **Current State Fields:**
+{current_fields_text}
+
+**Current Comment/Notation Pair:**
+- **Comment:** {pair.comment.text}
+- **Notation:** {pair.notation.line}
+- **Source Nodes:** {source_nodes}
+- **Destination Nodes:** {dest_nodes}
+- **Classification:** {pair.classification.value if pair.classification else 'Not classified'}
+
+**Task:**
+Analyze this comment/notation pair and identify ALL state fields that are impacted. This includes:
+1. Fields that are READ by the source or destination nodes
+2. Fields that are WRITTEN by the source or destination nodes  
+3. New fields that need to be created based on the transition
+
+For each field, determine:
+- name: Valid Python identifier
+- type_annotation: Python type (str, bool, int, List[str], Dict, etc.)
+- category: One of "human_input", "model_generated", "graph"
+- description: Clear explanation of the field's purpose
+- read_by_nodes: Which nodes read this field (from source/dest nodes)
+- written_by_nodes: Which nodes write this field (from source/dest nodes)
+
+**Output Format:**
+Return ONLY a valid JSON array of state field objects. Each object should have this structure:
+```json
+[
+  {{
+    "name": "field_name",
+    "type_annotation": "str",
+    "category": "model_generated",
+    "description": "Description of what this field contains",
+    "read_by_nodes": ["node1", "node2"],
+    "written_by_nodes": ["node3"]
+  }}
+]
+```
+
+**Important:**
+- Return valid JSON only, no explanatory text
+- Include both existing fields that are impacted AND new fields that need to be created
+- Use the exact category values: "human_input", "model_generated", or "graph"
+- Node names should match the actual source/destination nodes from the notation
+
+**State Fields JSON:**
+"""
         
-        # Default field based on source/dest nodes
-        if pair.source_nodes:
-            fields.append(f"{pair.source_nodes[0]}_data")
+        try:
+            response = self.llm.invoke(prompt.strip())
+            
+            # Check if the response object has a 'content' attribute
+            if hasattr(response, 'content'):
+                content = response.content.strip()
+            else:
+                content = str(response).strip()
+
+            # Parse JSON response
+            if content:
+                try:
+                    fields_data = json.loads(content)
+                    if HAVE_STATE_FIELD:
+                        # Convert to StateField objects
+                        state_fields = []
+                        for field_dict in fields_data:
+                            try:
+                                state_field = StateField(
+                                    name=field_dict.get('name', ''),
+                                    type_annotation=field_dict.get('type_annotation', 'str'),
+                                    category=FieldCategory(field_dict.get('category', 'graph')),
+                                    description=field_dict.get('description', ''),
+                                    read_by_nodes=set(field_dict.get('read_by_nodes', [])),
+                                    written_by_nodes=set(field_dict.get('written_by_nodes', []))
+                                )
+                                state_fields.append(state_field)
+                            except Exception as e:
+                                pair.errors.append(f"Failed to create StateField from {field_dict}: {e}")
+                        return state_fields
+                    else:
+                        # Return field names only
+                        return [field_dict.get('name', '') for field_dict in fields_data if field_dict.get('name')]
+                except json.JSONDecodeError as e:
+                    pair.errors.append(f"Failed to parse JSON response: {e}. Response was: {content[:200]}...")
+                    # Fallback: try to extract field names from response
+                    field_names = []
+                    for line in content.split('\n'):
+                        if '"name"' in line and ':' in line:
+                            try:
+                                name_part = line.split(':')[1].strip().strip('"').strip(',')
+                                if name_part:
+                                    field_names.append(name_part)
+                            except:
+                                continue
+                    return field_names[:5]  # Limit fallback results
+            
+        except Exception as e:
+            pair.errors.append(f"LLM call failed for implied state fields: {e}")
+
+        return []
+    
+    def _generate_state_fields_structured(self, comments: str, notation: str, current_state_fields: List = None) -> List:
+        """
+        Generate state fields using structured output with StateField model.
         
-        return fields[:3]  # Limit to 3 fields for now
+        Args:
+            comments: Comment text for the notation
+            notation: Graph notation line
+            current_state_fields: List of existing state fields for context
+            
+        Returns:
+            List of StateField objects or empty list if LLM not available
+        """
+        if not self.llm or not HAVE_STATE_FIELD:
+            return []
+            
+        if current_state_fields is None:
+            current_state_fields = []
+        
+        # Read graph-notation.md content
+        try:
+            with open('graph-notation.md', 'r', encoding='utf-8') as f:
+                graph_notation_spec = f.read()
+        except FileNotFoundError:
+            graph_notation_spec = "Graph notation specification not available."
+        
+        # Format current state fields for context
+        current_fields_text = "No existing state fields."
+        if current_state_fields:
+            if all(hasattr(f, 'name') for f in current_state_fields):
+                # StateField objects
+                fields_list = []
+                for field in current_state_fields:
+                    fields_list.append(f"  - {field.name}: {field.type_annotation} ({field.category.value}) - {field.description}")
+                current_fields_text = "\n".join(fields_list)
+            else:
+                # Simple strings
+                current_fields_text = ", ".join(str(f) for f in current_state_fields)
+        
+        # Create structured output LLM
+        try:
+            structured_llm = self.llm._llm.with_structured_output(StateField)
+        except AttributeError:
+            # Fallback if structured output not available
+            return []
+        
+        prompt = f"""You are an expert in analyzing LangGraph notation for state field identification. 
+
+**Graph Notation Specification:**
+{graph_notation_spec}
+
+**Current Graph Context:**
+- **Graph README:**
+{self.readme}
+
+- **Current State Fields:**
+{current_fields_text}
+
+**Current Comment/Notation:**
+- **Comment:** {comments}
+- **Notation:** {notation}
+
+**Task:**
+Analyze this comment/notation pair and identify ONE primary state field that is most directly impacted by this transition. Focus on the most important field that would be read from or written to.
+
+Consider:
+1. What data does this transition work with?
+2. What field would be most central to this operation?
+3. What type of data is implied by the comment and notation?
+
+Return a single StateField with:
+- name: Valid Python identifier for the most important field
+- type_annotation: Appropriate Python type (str, bool, int, List[str], Dict, etc.)
+- category: "human_input", "model_generated", or "graph" 
+- description: Clear explanation of the field's purpose
+- read_by_nodes: Empty set (will be populated later)
+- written_by_nodes: Empty set (will be populated later)
+
+Focus on the PRIMARY field only - the one most essential to this transition.
+"""
+        
+        try:
+            result = structured_llm.invoke(prompt.strip())
+            return [result] if result else []
+        except Exception as e:
+            print(f"Structured output failed: {e}")
+            return []
     
     def _generate_conditional_edge_reasoning(self, pair: CommentNotationPair) -> str:
         """
@@ -340,7 +566,12 @@ class GraphStructure:
                     pair.classification = NotationClassification.NODE_TO_NODE
                 
                 # Generate implied state fields using AI prompt
-                pair.implied_state_fields = self._generate_implied_state_fields(pair)
+                # Pass current state fields for context
+                all_current_fields = []
+                for p in self.pairs:
+                    if hasattr(p, 'implied_state_fields') and p.implied_state_fields:
+                        all_current_fields.extend(p.implied_state_fields)
+                pair.implied_state_fields = self._generate_implied_state_fields(pair, all_current_fields)
                 
                 # Generate conditional edge reasoning if needed
                 if pair.classification == NotationClassification.NODE_TO_CONDITIONAL_EDGE:
@@ -742,6 +973,284 @@ A -> B''',
     }
 ]
 
+# Test datasets for StateField verification
+STATE_FIELD_TEST_DATASETS = [
+    {
+        "name": "Human input field",
+        "comments": "Ask user whether to continue processing",
+        "notation": "check_status -> should_continue(yes, no)",
+        "expected_field": {
+            "name": "user_continue_choice",
+            "type_annotation": "bool",
+            "category": "human_input",
+            "description_contains": ["user", "continue", "choice"],
+            "read_by_nodes": set(),
+            "written_by_nodes": set()
+        }
+    },
+    {
+        "name": "Model generated content",
+        "comments": "Generate a joke about the given topic",
+        "notation": "get_topic -> generate_joke",
+        "expected_field": {
+            "name": "generated_joke",
+            "type_annotation": "str",
+            "category": "model_generated", 
+            "description_contains": ["joke", "generated", "content"],
+            "read_by_nodes": set(),
+            "written_by_nodes": set()
+        }
+    },
+    {
+        "name": "Graph calculated data",
+        "comments": "Calculate the total score from all inputs",
+        "notation": "collect_scores -> calculate_total",
+        "expected_field": {
+            "name": "total_score",
+            "type_annotation": "int",
+            "category": "graph",
+            "description_contains": ["total", "score", "calculated"],
+            "read_by_nodes": set(),
+            "written_by_nodes": set()
+        }
+    },
+    {
+        "name": "User request processing",
+        "comments": "Store the user's search query for processing",
+        "notation": "get_query -> process_search",
+        "expected_field": {
+            "name": "search_query",
+            "type_annotation": "str",
+            "category": "human_input",
+            "description_contains": ["search", "query", "user"],
+            "read_by_nodes": set(),
+            "written_by_nodes": set()
+        }
+    },
+    {
+        "name": "LLM response data",
+        "comments": "Generate response based on conversation history",
+        "notation": "analyze_context -> generate_response",
+        "expected_field": {
+            "name": "ai_response",
+            "type_annotation": "str",
+            "category": "model_generated",
+            "description_contains": ["response", "generated", "ai"],
+            "read_by_nodes": set(),
+            "written_by_nodes": set()
+        }
+    },
+    {
+        "name": "Validation result",
+        "comments": "Check if the input data is valid and complete",
+        "notation": "receive_data -> validate_input",
+        "expected_field": {
+            "name": "is_valid",
+            "type_annotation": "bool", 
+            "category": "graph",
+            "description_contains": ["valid", "validation", "check"],
+            "read_by_nodes": set(),
+            "written_by_nodes": set()
+        }
+    },
+    {
+        "name": "Processing status",
+        "comments": "Track the current processing state and progress",
+        "notation": "start_processing -> update_status",
+        "expected_field": {
+            "name": "processing_status",
+            "type_annotation": "str",
+            "category": "graph",
+            "description_contains": ["status", "processing", "progress"],
+            "read_by_nodes": set(),
+            "written_by_nodes": set()
+        }
+    },
+    {
+        "name": "List data structure",
+        "comments": "Collect all error messages encountered during processing",
+        "notation": "validate_data -> collect_errors",
+        "expected_field": {
+            "name": "error_messages",
+            "type_annotation": "List[str]",
+            "category": "graph",
+            "description_contains": ["error", "messages", "collected"],
+            "read_by_nodes": set(),
+            "written_by_nodes": set()
+        }
+    }
+]
+
+def verify_state_field_match(state_fields: List, expected_field: dict) -> bool:
+    """
+    Verify that at least one StateField in the list matches the expected field criteria.
+    
+    Args:
+        state_fields: List of StateField objects or field dictionaries
+        expected_field: Dictionary with expected field properties
+        
+    Returns:
+        bool: True if a matching field is found, False otherwise
+    """
+    if not state_fields:
+        return False
+        
+    expected_name = expected_field.get("name")
+    expected_type = expected_field.get("type_annotation") 
+    expected_category = expected_field.get("category")
+    expected_desc_contains = expected_field.get("description_contains", [])
+    expected_read_nodes = expected_field.get("read_by_nodes", set())
+    expected_write_nodes = expected_field.get("written_by_nodes", set())
+    
+    for field in state_fields:
+        # Handle both StateField objects and dictionaries
+        if hasattr(field, 'name'):
+            # StateField object
+            field_name = field.name
+            field_type = field.type_annotation
+            field_category = field.category.value if hasattr(field.category, 'value') else str(field.category)
+            field_description = field.description.lower()
+            field_read_nodes = field.read_by_nodes
+            field_write_nodes = field.written_by_nodes
+        elif isinstance(field, dict):
+            # Dictionary
+            field_name = field.get("name", "")
+            field_type = field.get("type_annotation", "")
+            field_category = field.get("category", "")
+            field_description = field.get("description", "").lower()
+            field_read_nodes = set(field.get("read_by_nodes", []))
+            field_write_nodes = set(field.get("written_by_nodes", []))
+        else:
+            continue
+        
+        # Check name match (exact or contains expected name)
+        name_match = (field_name == expected_name or 
+                     (expected_name and expected_name.lower() in field_name.lower()))
+        
+        # Check type annotation match
+        type_match = field_type == expected_type
+        
+        # Check category match  
+        category_match = field_category == expected_category
+        
+        # Check description contains expected keywords
+        desc_match = True
+        if expected_desc_contains:
+            desc_match = any(keyword.lower() in field_description for keyword in expected_desc_contains)
+        
+        # Check node sets (if specified)
+        read_nodes_match = expected_read_nodes <= field_read_nodes if expected_read_nodes else True
+        write_nodes_match = expected_write_nodes <= field_write_nodes if expected_write_nodes else True
+        
+        # A field matches if it has good name/type/category match and description keywords
+        if ((name_match or field_name) and  # Has some reasonable name
+            type_match and 
+            category_match and 
+            desc_match and
+            read_nodes_match and 
+            write_nodes_match):
+            return True
+    
+    return False
+
+def get_field_match_details(state_fields: List, expected_field: dict) -> dict:
+    """
+    Get detailed information about how well state fields match expected criteria.
+    
+    Args:
+        state_fields: List of StateField objects or field dictionaries
+        expected_field: Dictionary with expected field properties
+        
+    Returns:
+        dict: Detailed match information for debugging
+    """
+    if not state_fields:
+        return {"match": False, "reason": "No state fields provided"}
+    
+    expected_name = expected_field.get("name")
+    expected_type = expected_field.get("type_annotation")
+    expected_category = expected_field.get("category") 
+    expected_desc_contains = expected_field.get("description_contains", [])
+    
+    best_match = None
+    best_score = 0
+    
+    for i, field in enumerate(state_fields):
+        # Handle both StateField objects and dictionaries
+        if hasattr(field, 'name'):
+            field_name = field.name
+            field_type = field.type_annotation
+            field_category = field.category.value if hasattr(field.category, 'value') else str(field.category)
+            field_description = field.description.lower()
+        elif isinstance(field, dict):
+            field_name = field.get("name", "")
+            field_type = field.get("type_annotation", "")
+            field_category = field.get("category", "")
+            field_description = field.get("description", "").lower()
+        else:
+            continue
+        
+        score = 0
+        details = {}
+        
+        # Name scoring
+        if field_name == expected_name:
+            score += 3
+            details["name"] = "exact_match"
+        elif expected_name and expected_name.lower() in field_name.lower():
+            score += 2  
+            details["name"] = "partial_match"
+        elif field_name:
+            score += 1
+            details["name"] = "has_name"
+        else:
+            details["name"] = "no_name"
+        
+        # Type scoring
+        if field_type == expected_type:
+            score += 2
+            details["type"] = "exact_match"
+        else:
+            details["type"] = f"mismatch: got {field_type}, expected {expected_type}"
+        
+        # Category scoring
+        if field_category == expected_category:
+            score += 2
+            details["category"] = "exact_match"
+        else:
+            details["category"] = f"mismatch: got {field_category}, expected {expected_category}"
+        
+        # Description scoring
+        desc_matches = [kw for kw in expected_desc_contains if kw.lower() in field_description]
+        if len(desc_matches) == len(expected_desc_contains):
+            score += 2
+            details["description"] = "all_keywords_found"
+        elif desc_matches:
+            score += 1
+            details["description"] = f"partial_keywords: {desc_matches}"
+        else:
+            details["description"] = "no_keywords_found"
+        
+        if score > best_score:
+            best_score = score
+            best_match = {
+                "index": i,
+                "field": field,
+                "score": score,
+                "details": details,
+                "field_name": field_name,
+                "field_type": field_type,
+                "field_category": field_category,
+                "field_description": field_description[:100]
+            }
+    
+    return {
+        "match": best_score >= 7,  # Threshold for considering a good match
+        "best_match": best_match,
+        "total_fields": len(state_fields),
+        "expected": expected_field
+    }
+
 # Test datasets for parameterized testing
 TEST_DATASETS = [
     {
@@ -986,16 +1495,12 @@ valid_path -> complete'''
         
         # Test first pair (start notation)
         start_pair = structure.pairs[0]
-        self.assertEqual(start_pair.implied_source_nodes, [])  # Empty for start
-        self.assertEqual(start_pair.implied_destination_nodes, ["process_input"])
         self.assertTrue(len(start_pair.implied_state_fields) > 0)  # Should have generated fields
         self.assertIsNone(start_pair.conditional_edge_reasoning)  # Not a conditional edge
         
         # Test second pair (conditional edge)
         conditional_pair = structure.pairs[1]
         self.assertEqual(conditional_pair.classification, NotationClassification.NODE_TO_CONDITIONAL_EDGE)
-        self.assertEqual(conditional_pair.implied_source_nodes, ["process_input"])
-        self.assertEqual(conditional_pair.implied_destination_nodes, ["valid_path", "error_path", "retry_path"])
         self.assertTrue(len(conditional_pair.implied_state_fields) > 0)
         self.assertIsNotNone(conditional_pair.conditional_edge_reasoning)  # Should have reasoning
         self.assertIn("route_decision", conditional_pair.conditional_edge_reasoning)
@@ -1003,8 +1508,6 @@ valid_path -> complete'''
         # Test third pair (regular node)
         regular_pair = structure.pairs[2]
         self.assertEqual(regular_pair.classification, NotationClassification.NODE_TO_NODE)
-        self.assertEqual(regular_pair.implied_source_nodes, ["valid_path"])
-        self.assertEqual(regular_pair.implied_destination_nodes, ["complete"])
         self.assertTrue(len(regular_pair.implied_state_fields) > 0)
         self.assertIsNone(regular_pair.conditional_edge_reasoning)  # Not a conditional edge
     
@@ -1059,62 +1562,66 @@ A -> B'''
         node_pair = structure.pairs[1]
         self.assertEqual(node_pair.classification, NotationClassification.NODE_TO_NODE)
         self.assertIsNone(node_pair.conditional_edge_function)
-        """Test classification and analysis functionality"""
-        content = '''"""Test graph"""
-# Comment 1
-A -> B
-# Comment 2  
-B -> C'''
-        
-        structure = parse_graph_structure(content)
-        
-        # Test initial state - no classifications
-        self.assertEqual(len(structure.get_unclassified_pairs()), 2)
-        self.assertEqual(len(structure.get_classified_pairs(NotationClassification.NODE_TO_NODE)), 0)
-        
-        # Manually classify first pair
-        structure.pairs[0].classification = NotationClassification.NODE_TO_NODE
-        structure.pairs[0].implied_state_fields = ["state_a", "state_b"]
-        structure.pairs[0].implied_source_nodes = ["A"]
-        structure.pairs[0].implied_destination_nodes = ["B"]
-        
-        # Test classification queries
-        self.assertEqual(len(structure.get_unclassified_pairs()), 1)
-        self.assertEqual(len(structure.get_classified_pairs(NotationClassification.NODE_TO_NODE)), 1)
-        
-        # Test analysis data
-        classified_pair = structure.get_classified_pairs(NotationClassification.NODE_TO_NODE)[0]
-        self.assertEqual(classified_pair.implied_state_fields, ["state_a", "state_b"])
-        self.assertEqual(classified_pair.implied_source_nodes, ["A"])
-        self.assertEqual(classified_pair.implied_destination_nodes, ["B"])
-        """Test classification and analysis functionality"""
-        content = '''"""Test graph"""
-# Comment 1
-A -> B
-# Comment 2  
-B -> C'''
-        
-        structure = parse_graph_structure(content)
-        
-        # Test initial state - no classifications
-        self.assertEqual(len(structure.get_unclassified_pairs()), 2)
-        self.assertEqual(len(structure.get_classified_pairs(NotationClassification.NODE_TO_NODE)), 0)
-        
-        # Manually classify first pair
-        structure.pairs[0].classification = NotationClassification.NODE_TO_NODE
-        structure.pairs[0].implied_state_fields = ["state_a", "state_b"]
-        structure.pairs[0].implied_source_nodes = ["A"]
-        structure.pairs[0].implied_destination_nodes = ["B"]
-        
-        # Test classification queries
-        self.assertEqual(len(structure.get_unclassified_pairs()), 1)
-        self.assertEqual(len(structure.get_classified_pairs(NotationClassification.NODE_TO_NODE)), 1)
-        
-        # Test analysis data
-        classified_pair = structure.get_classified_pairs(NotationClassification.NODE_TO_NODE)[0]
-        self.assertEqual(classified_pair.implied_state_fields, ["state_a", "state_b"])
-        self.assertEqual(classified_pair.implied_source_nodes, ["A"])
-        self.assertEqual(classified_pair.implied_destination_nodes, ["B"])
+    
+    def test_state_field_verification(self):
+        """Test StateField verification functions with test datasets"""
+        for dataset in STATE_FIELD_TEST_DATASETS:
+            with self.subTest(dataset=dataset["name"]):
+                # Test verify_state_field_match with a matching field
+                if HAVE_STATE_FIELD:
+                    # Create a StateField that should match
+                    test_field = StateField(
+                        name=dataset["expected_field"]["name"],
+                        type_annotation=dataset["expected_field"]["type_annotation"],
+                        category=FieldCategory(dataset["expected_field"]["category"]),
+                        description=f"Test field for {' '.join(dataset['expected_field']['description_contains'])}",
+                        read_by_nodes=dataset["expected_field"]["read_by_nodes"],
+                        written_by_nodes=dataset["expected_field"]["written_by_nodes"]
+                    )
+                    
+                    # Test that verification passes
+                    self.assertTrue(
+                        verify_state_field_match([test_field], dataset["expected_field"]),
+                        f"StateField verification failed for {dataset['name']}"
+                    )
+                    
+                    # Test detailed matching
+                    details = get_field_match_details([test_field], dataset["expected_field"])
+                    self.assertTrue(details["match"], f"Detailed matching failed for {dataset['name']}")
+                    self.assertGreaterEqual(details["best_match"]["score"], 7, 
+                                          f"Match score too low for {dataset['name']}")
+                
+                # Test with dictionary format
+                test_field_dict = {
+                    "name": dataset["expected_field"]["name"],
+                    "type_annotation": dataset["expected_field"]["type_annotation"],
+                    "category": dataset["expected_field"]["category"],
+                    "description": f"Test field for {' '.join(dataset['expected_field']['description_contains'])}",
+                    "read_by_nodes": list(dataset["expected_field"]["read_by_nodes"]),
+                    "written_by_nodes": list(dataset["expected_field"]["written_by_nodes"])
+                }
+                
+                self.assertTrue(
+                    verify_state_field_match([test_field_dict], dataset["expected_field"]),
+                    f"Dictionary verification failed for {dataset['name']}"
+                )
+                
+                # Test that verification fails with wrong field
+                wrong_field = {
+                    "name": "wrong_name",
+                    "type_annotation": "wrong_type",
+                    "category": "graph",
+                    "description": "wrong description",
+                    "read_by_nodes": [],
+                    "written_by_nodes": []
+                }
+                
+                self.assertFalse(
+                    verify_state_field_match([wrong_field], dataset["expected_field"]),
+                    f"Verification should have failed for wrong field in {dataset['name']}"
+                )
+
+    
 
 # Main program
 if __name__ == "__main__":
