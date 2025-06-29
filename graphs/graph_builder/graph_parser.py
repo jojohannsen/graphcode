@@ -1251,6 +1251,187 @@ def get_field_match_details(state_fields: List, expected_field: dict) -> dict:
         "expected": expected_field
     }
 
+def is_state_field_consistent(state_field, dataset_row: dict) -> tuple[bool, dict]:
+    """
+    Check if a StateField is consistent with the expected values in a dataset row.
+    
+    Args:
+        state_field: StateField object or dictionary to check
+        dataset_row: Dictionary containing expected field properties from dataset
+        
+    Returns:
+        tuple: (is_consistent: bool, details: dict with consistency check details)
+    """
+    if not dataset_row or "expected_field" not in dataset_row:
+        return False, {"error": "Invalid dataset row - missing expected_field"}
+    
+    expected = dataset_row["expected_field"]
+    details = {
+        "checks": {},
+        "scores": {},
+        "total_score": 0,
+        "max_score": 0,
+        "consistency_percentage": 0
+    }
+    
+    # Extract field properties (handle both StateField objects and dictionaries)
+    if hasattr(state_field, 'name'):
+        # StateField object
+        field_name = state_field.name
+        field_type = state_field.type_annotation
+        field_category = state_field.category.value if hasattr(state_field.category, 'value') else str(state_field.category)
+        field_description = state_field.description.lower()
+        field_read_nodes = state_field.read_by_nodes
+        field_write_nodes = state_field.written_by_nodes
+    elif isinstance(state_field, dict):
+        # Dictionary
+        field_name = state_field.get("name", "")
+        field_type = state_field.get("type_annotation", "")
+        field_category = state_field.get("category", "")
+        field_description = state_field.get("description", "").lower()
+        field_read_nodes = set(state_field.get("read_by_nodes", []))
+        field_write_nodes = set(state_field.get("written_by_nodes", []))
+    else:
+        return False, {"error": f"Invalid state_field type: {type(state_field)}"}
+    
+    # Check 1: Name consistency
+    expected_name = expected.get("name", "")
+    details["max_score"] += 3
+    
+    if field_name == expected_name:
+        details["checks"]["name"] = "exact_match"
+        details["scores"]["name"] = 3
+        details["total_score"] += 3
+    elif expected_name and expected_name.lower() in field_name.lower():
+        details["checks"]["name"] = "partial_match"
+        details["scores"]["name"] = 2
+        details["total_score"] += 2
+    elif field_name and expected_name:
+        # Check if names are semantically related (basic keyword overlap)
+        field_words = set(field_name.lower().split('_'))
+        expected_words = set(expected_name.lower().split('_'))
+        overlap = field_words.intersection(expected_words)
+        if overlap:
+            details["checks"]["name"] = f"semantic_overlap: {overlap}"
+            details["scores"]["name"] = 1
+            details["total_score"] += 1
+        else:
+            details["checks"]["name"] = f"mismatch: '{field_name}' vs '{expected_name}'"
+            details["scores"]["name"] = 0
+    else:
+        details["checks"]["name"] = "missing_name"
+        details["scores"]["name"] = 0
+    
+    # Check 2: Type annotation consistency
+    expected_type = expected.get("type_annotation", "")
+    details["max_score"] += 2
+    
+    if field_type == expected_type:
+        details["checks"]["type"] = "exact_match"
+        details["scores"]["type"] = 2
+        details["total_score"] += 2
+    elif field_type and expected_type:
+        # Check for compatible types (e.g., "str" vs "string")
+        type_aliases = {
+            "string": "str",
+            "boolean": "bool", 
+            "integer": "int",
+            "list": "List",
+            "dict": "Dict"
+        }
+        normalized_field_type = type_aliases.get(field_type.lower(), field_type)
+        normalized_expected_type = type_aliases.get(expected_type.lower(), expected_type)
+        
+        if normalized_field_type == normalized_expected_type:
+            details["checks"]["type"] = "compatible_match"
+            details["scores"]["type"] = 2
+            details["total_score"] += 2
+        else:
+            details["checks"]["type"] = f"mismatch: '{field_type}' vs '{expected_type}'"
+            details["scores"]["type"] = 0
+    else:
+        details["checks"]["type"] = "missing_type"
+        details["scores"]["type"] = 0
+    
+    # Check 3: Category consistency
+    expected_category = expected.get("category", "")
+    details["max_score"] += 2
+    
+    if field_category == expected_category:
+        details["checks"]["category"] = "exact_match"
+        details["scores"]["category"] = 2
+        details["total_score"] += 2
+    elif field_category and expected_category:
+        details["checks"]["category"] = f"mismatch: '{field_category}' vs '{expected_category}'"
+        details["scores"]["category"] = 0
+    else:
+        details["checks"]["category"] = "missing_category"
+        details["scores"]["category"] = 0
+    
+    # Check 4: Description keyword consistency
+    expected_keywords = expected.get("description_contains", [])
+    details["max_score"] += 2
+    
+    if expected_keywords:
+        found_keywords = [kw for kw in expected_keywords if kw.lower() in field_description]
+        keyword_ratio = len(found_keywords) / len(expected_keywords)
+        
+        if keyword_ratio == 1.0:
+            details["checks"]["description"] = "all_keywords_found"
+            details["scores"]["description"] = 2
+            details["total_score"] += 2
+        elif keyword_ratio >= 0.5:
+            details["checks"]["description"] = f"partial_keywords: {found_keywords}"
+            details["scores"]["description"] = 1
+            details["total_score"] += 1
+        else:
+            details["checks"]["description"] = f"few_keywords: {found_keywords}"
+            details["scores"]["description"] = 0
+    else:
+        details["checks"]["description"] = "no_keywords_expected"
+        details["scores"]["description"] = 2  # Full score if no keywords expected
+        details["total_score"] += 2
+    
+    # Check 5: Node relationships (if specified)
+    expected_read_nodes = expected.get("read_by_nodes", set())
+    expected_write_nodes = expected.get("written_by_nodes", set())
+    
+    if expected_read_nodes or expected_write_nodes:
+        details["max_score"] += 1
+        
+        read_match = expected_read_nodes <= field_read_nodes if expected_read_nodes else True
+        write_match = expected_write_nodes <= field_write_nodes if expected_write_nodes else True
+        
+        if read_match and write_match:
+            details["checks"]["nodes"] = "all_nodes_match"
+            details["scores"]["nodes"] = 1
+            details["total_score"] += 1
+        else:
+            missing_read = expected_read_nodes - field_read_nodes if expected_read_nodes else set()
+            missing_write = expected_write_nodes - field_write_nodes if expected_write_nodes else set()
+            details["checks"]["nodes"] = f"missing_read: {missing_read}, missing_write: {missing_write}"
+            details["scores"]["nodes"] = 0
+    else:
+        details["checks"]["nodes"] = "no_nodes_expected"
+        details["scores"]["nodes"] = 0  # No penalty for missing optional data
+    
+    # Calculate consistency percentage
+    if details["max_score"] > 0:
+        details["consistency_percentage"] = (details["total_score"] / details["max_score"]) * 100
+    
+    # Determine if consistent (threshold: 70% or higher)
+    is_consistent = details["consistency_percentage"] >= 70.0
+    
+    # Add summary
+    details["summary"] = {
+        "consistent": is_consistent,
+        "score": f"{details['total_score']}/{details['max_score']}",
+        "percentage": f"{details['consistency_percentage']:.1f}%",
+        "threshold": "70.0%"
+    }
+    
+    return is_consistent, details
+
 # Test datasets for parameterized testing
 TEST_DATASETS = [
     {
@@ -1620,6 +1801,70 @@ A -> B'''
                     verify_state_field_match([wrong_field], dataset["expected_field"]),
                     f"Verification should have failed for wrong field in {dataset['name']}"
                 )
+    
+    def test_state_field_consistency(self):
+        """Test individual StateField consistency checking against dataset rows"""
+        for dataset in STATE_FIELD_TEST_DATASETS:
+            with self.subTest(dataset=dataset["name"]):
+                # Test with a perfectly matching field
+                if HAVE_STATE_FIELD:
+                    perfect_field = StateField(
+                        name=dataset["expected_field"]["name"],
+                        type_annotation=dataset["expected_field"]["type_annotation"],
+                        category=FieldCategory(dataset["expected_field"]["category"]),
+                        description=f"Field that contains {' and '.join(dataset['expected_field']['description_contains'])}",
+                        read_by_nodes=dataset["expected_field"]["read_by_nodes"],
+                        written_by_nodes=dataset["expected_field"]["written_by_nodes"]
+                    )
+                    
+                    # Should be consistent
+                    is_consistent, details = is_state_field_consistent(perfect_field, dataset)
+                    self.assertTrue(is_consistent, f"Perfect field should be consistent for {dataset['name']}: {details['summary']}")
+                    self.assertGreaterEqual(details["consistency_percentage"], 70.0, 
+                                          f"Consistency percentage should be >= 70% for {dataset['name']}")
+                
+                # Test with dictionary format
+                perfect_dict = {
+                    "name": dataset["expected_field"]["name"],
+                    "type_annotation": dataset["expected_field"]["type_annotation"],
+                    "category": dataset["expected_field"]["category"],
+                    "description": f"Field that contains {' and '.join(dataset['expected_field']['description_contains'])}",
+                    "read_by_nodes": list(dataset["expected_field"]["read_by_nodes"]),
+                    "written_by_nodes": list(dataset["expected_field"]["written_by_nodes"])
+                }
+                
+                is_consistent, details = is_state_field_consistent(perfect_dict, dataset)
+                self.assertTrue(is_consistent, f"Perfect dict should be consistent for {dataset['name']}: {details['summary']}")
+                
+                # Test with partially matching field (should still pass if above threshold)
+                partial_field = {
+                    "name": f"alt_{dataset['expected_field']['name']}",  # Different but related name
+                    "type_annotation": dataset["expected_field"]["type_annotation"],  # Correct type
+                    "category": dataset["expected_field"]["category"],  # Correct category
+                    "description": f"Alternative field with {dataset['expected_field']['description_contains'][0]}",  # Some keywords
+                    "read_by_nodes": [],
+                    "written_by_nodes": []
+                }
+                
+                is_consistent, details = is_state_field_consistent(partial_field, dataset)
+                # This may or may not be consistent depending on the scoring, but should not error
+                self.assertIsInstance(is_consistent, bool, f"Should return boolean for {dataset['name']}")
+                self.assertIn("summary", details, f"Should include summary for {dataset['name']}")
+                
+                # Test with completely wrong field (should fail)
+                wrong_field = {
+                    "name": "completely_wrong_name",
+                    "type_annotation": "wrong_type",
+                    "category": "graph" if dataset["expected_field"]["category"] != "graph" else "human_input",
+                    "description": "completely unrelated description",
+                    "read_by_nodes": [],
+                    "written_by_nodes": []
+                }
+                
+                is_consistent, details = is_state_field_consistent(wrong_field, dataset)
+                self.assertFalse(is_consistent, f"Wrong field should not be consistent for {dataset['name']}")
+                self.assertLess(details["consistency_percentage"], 70.0, 
+                              f"Wrong field should have low consistency for {dataset['name']}")
 
     
 
